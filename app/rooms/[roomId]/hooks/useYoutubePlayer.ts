@@ -11,9 +11,9 @@ export function useYoutubePlayer(room: any, user: any, roomId: string, container
 
   const isHost = user?.uid === room?.ownerId;
 
-  /* -----------------------
+  /* --------------------------------------
      1) API LOAD
-  ----------------------- */
+  --------------------------------------- */
   useEffect(() => {
     if (typeof window === "undefined") return;
 
@@ -31,9 +31,9 @@ export function useYoutubePlayer(room: any, user: any, roomId: string, container
     };
   }, []);
 
-  /* -----------------------
+  /* --------------------------------------
      2) PLAYER INIT
-  ----------------------- */
+  --------------------------------------- */
   useEffect(() => {
     if (!apiReady) return;
     if (!room?.youtube) return;
@@ -41,6 +41,7 @@ export function useYoutubePlayer(room: any, user: any, roomId: string, container
     const el = containerRef.current;
     if (!el) return;
 
+    // Eski player’ı temizle
     if (playerRef.current) {
       try { playerRef.current.destroy(); } catch {}
       playerRef.current = null;
@@ -48,8 +49,10 @@ export function useYoutubePlayer(room: any, user: any, roomId: string, container
 
     playerRef.current = new window.YT.Player(el, {
       videoId: room.youtube,
+
       playerVars: {
         autoplay: 1,
+        playsinline: 1,
         controls: isHost ? 1 : 0,
         disablekb: isHost ? 0 : 1,
         rel: 0,
@@ -58,10 +61,12 @@ export function useYoutubePlayer(room: any, user: any, roomId: string, container
 
       events: {
         onReady: () => {
+          if (!playerRef.current) return;
+
           setPlayerReady(true);
 
           try {
-            if (room.videoTime) {
+            if (room.videoTime && typeof playerRef.current.seekTo === "function") {
               playerRef.current.seekTo(room.videoTime, true);
             }
 
@@ -69,18 +74,22 @@ export function useYoutubePlayer(room: any, user: any, roomId: string, container
               playerRef.current.setVolume(room.videoVolume ?? 100);
             }
 
-            if (room.playerState === 1) playerRef.current.playVideo();
-            else playerRef.current.pauseVideo();
+            if (room.playerState === 1 && typeof playerRef.current.playVideo === "function") {
+              playerRef.current.playVideo();
+            } else if (typeof playerRef.current.pauseVideo === "function") {
+              playerRef.current.pauseVideo();
+            }
           } catch {}
         },
 
         onStateChange: async (e: any) => {
           if (!isHost) return;
+          if (!playerRef.current) return;
 
           const st = e.data;
+
           if (st === 1 || st === 2) {
             let cur = 0;
-
             try {
               if (typeof playerRef.current.getCurrentTime === "function") {
                 cur = playerRef.current.getCurrentTime();
@@ -99,10 +108,9 @@ export function useYoutubePlayer(room: any, user: any, roomId: string, container
 
   }, [apiReady, room?.youtube]);
 
-
-  /* -----------------------
-     3) HOST — VOLUME SYNC
-  ----------------------- */
+  /* --------------------------------------
+     3) HOST — SYNC VOLUME
+  --------------------------------------- */
   useEffect(() => {
     if (!playerReady) return;
     if (!isHost) return;
@@ -111,15 +119,12 @@ export function useYoutubePlayer(room: any, user: any, roomId: string, container
       if (!playerRef.current) return;
 
       let vol = null;
-
       if (typeof playerRef.current.getVolume === "function") {
         vol = playerRef.current.getVolume();
       }
 
       if (vol !== null && vol !== room.videoVolume) {
-        await updateDoc(doc(db, "rooms", roomId), {
-          videoVolume: vol
-        });
+        await updateDoc(doc(db, "rooms", roomId), { videoVolume: vol });
       }
 
     }, 300);
@@ -127,10 +132,9 @@ export function useYoutubePlayer(room: any, user: any, roomId: string, container
     return () => clearInterval(interval);
   }, [playerReady, isHost, room.videoVolume]);
 
-
-  /* -----------------------
+  /* --------------------------------------
      4) GUEST — FOLLOW HOST VOLUME
-  ----------------------- */
+  --------------------------------------- */
   useEffect(() => {
     if (!playerReady) return;
     if (isHost) return;
@@ -141,10 +145,9 @@ export function useYoutubePlayer(room: any, user: any, roomId: string, container
     }
   }, [playerReady, room.videoVolume]);
 
-
-  /* -----------------------
-     5) GUEST SYNC (TIME + PLAY/PAUSE)
-  ----------------------- */
+  /* --------------------------------------
+     5) GUEST — FOLLOW HOST TIME + PLAY/PAUSE
+  --------------------------------------- */
   useEffect(() => {
     if (!playerReady) return;
     if (!playerRef.current) return;
@@ -159,13 +162,20 @@ export function useYoutubePlayer(room: any, user: any, roomId: string, container
     }
 
     try {
-      const cur = playerRef.current.getCurrentTime();
-      if (Math.abs(cur - target) > 1) {
-        playerRef.current.seekTo(target, true);
+      if (typeof playerRef.current.getCurrentTime === "function") {
+        const cur = playerRef.current.getCurrentTime();
+
+        if (Math.abs(cur - target) > 1 && typeof playerRef.current.seekTo === "function") {
+          playerRef.current.seekTo(target, true);
+        }
       }
 
-      if (room.playerState === 1) playerRef.current.playVideo();
-      else playerRef.current.pauseVideo();
+      if (room.playerState === 1 && typeof playerRef.current.playVideo === "function") {
+        playerRef.current.playVideo();
+      } else if (typeof playerRef.current.pauseVideo === "function") {
+        playerRef.current.pauseVideo();
+      }
+
     } catch {}
   }, [playerReady, room.playerState, room.videoTime, room.lastUpdate]);
 }
