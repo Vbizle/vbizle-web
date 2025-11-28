@@ -1,4 +1,4 @@
-/* CAMERA SECTION — CAMERA AUDIO INDEPENDENT FROM YOUTUBE */
+/* CAMERA SECTION — FULL FIXED VERSION */
 
 "use client";
 
@@ -10,6 +10,7 @@ import { doc, updateDoc } from "firebase/firestore";
 import {
   Room,
   RemoteParticipant,
+  Track,
   createLocalVideoTrack,
   createLocalAudioTrack,
 } from "livekit-client";
@@ -40,18 +41,16 @@ export default function CameraSection({ room, user, roomId }: any) {
   const [remoteHostVideo, setRemoteHostVideo] = useState<any>(null);
   const [remoteGuestVideo, setRemoteGuestVideo] = useState<any>(null);
 
-  const [remoteHostAudio, setRemoteHostAudio] = useState<any>(null);
-  const [remoteGuestAudio, setRemoteGuestAudio] = useState<any>(null);
 
   /* --------------------------------------------
      1) TOKEN → CONNECT
   --------------------------------------------- */
-
   useEffect(() => {
-    async function connectLivekit() {
+    async function connectLK() {
       if (lkRoom) return;
 
       const identity = currentUid;
+
       const resp = await fetch(
         `${process.env.NEXT_PUBLIC_LIVEKIT_TOKEN_ENDPOINT}?room=${roomId}&identity=${identity}`
       );
@@ -69,13 +68,13 @@ export default function CameraSection({ room, user, roomId }: any) {
       setLkRoom(newRoom);
     }
 
-    connectLivekit();
+    connectLK();
   }, []);
 
-  /* --------------------------------------------
-     2) CAMERA VIDEO PUBLISH
-  --------------------------------------------- */
 
+  /* --------------------------------------------
+     2) LOCAL VIDEO TRACK
+  --------------------------------------------- */
   useEffect(() => {
     if (!lkRoom) return;
 
@@ -83,7 +82,7 @@ export default function CameraSection({ room, user, roomId }: any) {
       if (localVideoTrack) return;
       const track = await createLocalVideoTrack();
       setLocalVideoTrack(track);
-      await lkRoom.localParticipant.publishTrack(track);
+      lkRoom.localParticipant.publishTrack(track);
     }
 
     async function stopVideo() {
@@ -96,24 +95,21 @@ export default function CameraSection({ room, user, roomId }: any) {
     const shouldPublish =
       (isHost && hostCamera) || (isGuestSelf && guestCamera);
 
-    if (shouldPublish) startVideo();
-    else stopVideo();
+    shouldPublish ? startVideo() : stopVideo();
   }, [lkRoom, hostCamera, guestCamera]);
 
-  /* --------------------------------------------
-     2.5) MICROPHONE AUDIO PUBLISH
-  --------------------------------------------- */
 
+  /* --------------------------------------------
+     3) LOCAL AUDIO TRACK
+  --------------------------------------------- */
   useEffect(() => {
     if (!lkRoom) return;
 
     async function startAudio() {
       if (localAudioTrack) return;
-
       const track = await createLocalAudioTrack();
       setLocalAudioTrack(track);
-
-      await lkRoom.localParticipant.publishTrack(track);
+      lkRoom.localParticipant.publishTrack(track);
     }
 
     async function stopAudio() {
@@ -126,75 +122,49 @@ export default function CameraSection({ room, user, roomId }: any) {
     const shouldPublish =
       (isHost && hostMic) || (isGuestSelf && guestMic);
 
-    if (shouldPublish) startAudio();
-    else stopAudio();
+    shouldPublish ? startAudio() : stopAudio();
   }, [lkRoom, hostMic, guestMic]);
 
-  /* --------------------------------------------
-     3) REMOTE PARTICIPANTS
-  --------------------------------------------- */
 
+  /* --------------------------------------------
+     4) REMOTE PARTICIPANTS — ULTRA STABLE
+  --------------------------------------------- */
   useEffect(() => {
     if (!lkRoom) return;
 
-    function handleParticipant(participant: RemoteParticipant) {
-      participant.on("trackSubscribed", (track) => {
-        if (track.kind === "video") {
-          if (participant.identity === hostUid) setRemoteHostVideo(track);
-          else if (participant.identity === guestUid) setRemoteGuestVideo(track);
+    const handlePublished = (participant: RemoteParticipant, track) => {
+      track.on("subscribed", (subTrack: any) => {
+        if (subTrack.kind === Track.Kind.Video) {
+          if (participant.identity === hostUid)
+            setRemoteHostVideo(subTrack);
+          if (participant.identity === guestUid)
+            setRemoteGuestVideo(subTrack);
         }
 
-        if (track.kind === "audio") {
-          const audioEl = track.attach();
+        if (subTrack.kind === Track.Kind.Audio) {
+          const audioEl = subTrack.attach();
           audioEl.autoplay = true;
-          audioEl.muted = false;
-          audioEl.volume = 1.0;                        // 🔥 YouTube’dan bağımsız TAM SES
           audioEl.playsInline = true;
-
+          audioEl.muted = false;
           audioEl.style.display = "none";
-          document.body.appendChild(audioEl);          // 🔥 YouTube DOM’undan AYRILDI
-
-          if (participant.identity === hostUid) setRemoteHostAudio(track);
-          else if (participant.identity === guestUid) setRemoteGuestAudio(track);
+          document.body.appendChild(audioEl);
         }
       });
+    };
 
-      participant.on("trackUnsubscribed", () => {
-        if (participant.identity === hostUid) {
-          setRemoteHostVideo(null);
-          setRemoteHostAudio(null);
-        } else if (participant.identity === guestUid) {
-          setRemoteGuestVideo(null);
-          setRemoteGuestAudio(null);
-        }
+    lkRoom.on("trackPublished", handlePublished);
+
+    lkRoom.remoteParticipants.forEach((p) => {
+      p.tracks.forEach((pub) => {
+        if (pub.track) handlePublished(p, pub.track);
       });
-    }
-
-    lkRoom.on("participantConnected", handleParticipant);
-
-    Array.from(lkRoom.remoteParticipants.values()).forEach(handleParticipant);
+    });
 
     return () => {
-      lkRoom.off("participantConnected", handleParticipant);
+      lkRoom.off("trackPublished", handlePublished);
     };
   }, [lkRoom]);
 
-  /* --------------------------------------------
-     🔥 4) GLOBAL CAMERA AUDIO ISOLATION (her 300ms enforce)
-  --------------------------------------------- */
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const audios = document.querySelectorAll("audio");
-
-      audios.forEach((audio: any) => {
-        audio.volume = 1.0;   // 🔥 Kamera sesi asla kısılmaz
-        audio.muted = false;
-      });
-    }, 300);
-
-    return () => clearInterval(interval);
-  }, []);
 
   /* --------------------------------------------
      5) FIREBASE TOGGLES
@@ -228,29 +198,13 @@ export default function CameraSection({ room, user, roomId }: any) {
     });
   };
 
-  const leaveHostSeat = async () => {
-    if (!isHost) return;
-    await updateDoc(doc(db, "rooms", roomId), {
-      "hostState.camera": false,
-      "hostState.mic": false,
-    });
-  };
-
-  const leaveGuestSeat = async () => {
-    if (!isGuestSelf) return;
-    await updateDoc(doc(db, "rooms", roomId), {
-      guestSeat: null,
-      "guestState.camera": false,
-      "guestState.mic": false,
-    });
-  };
 
   /* --------------------------------------------
      6) RENDER
   --------------------------------------------- */
-
   return (
     <div className="w-full flex justify-between items-center px-6 py-4 gap-6">
+
       <CameraSlot
         nickname={hostName}
         isOccupied={true}
@@ -262,7 +216,6 @@ export default function CameraSection({ room, user, roomId }: any) {
         localTrack={isHost ? localVideoTrack : null}
         onToggleCamera={toggleHostCamera}
         onToggleMic={toggleHostMic}
-        onLeave={leaveHostSeat}
       />
 
       {guestUid ? (
@@ -277,17 +230,9 @@ export default function CameraSection({ room, user, roomId }: any) {
           localTrack={isGuestSelf ? localVideoTrack : null}
           onToggleCamera={toggleGuestCamera}
           onToggleMic={toggleGuestMic}
-          onLeave={leaveGuestSeat}
         />
       ) : (
-        <CameraSlot
-          nickname={"Misafir Koltuğu"}
-          isOccupied={false}
-          isSelf={false}
-          isHost={false}
-          cameraOn={false}
-          micOn={false}
-        />
+        <CameraSlot nickname="Misafir Koltuğu" isOccupied={false} />
       )}
     </div>
   );

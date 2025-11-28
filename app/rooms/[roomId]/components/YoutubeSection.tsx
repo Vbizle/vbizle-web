@@ -3,21 +3,16 @@
 import { useYoutubePlayer } from "../hooks/useYoutubePlayer";
 import { useEffect, useRef } from "react";
 
-interface Props {
-  room: any;
-  user: any;
-  roomId: string;
-}
-
-export default function YoutubeSection({ room, user, roomId }: Props) {
+export default function YoutubeSection({ room, user, roomId }) {
   const playerContainerRef = useRef<HTMLDivElement | null>(null);
 
-  // ❗ Player sadece DOM hazır olduğunda çalışmalı
   useEffect(() => {
-    if (!playerContainerRef.current) return;
+    if (playerContainerRef.current) {
+      playerContainerRef.current.setAttribute("playsinline", "true");
+      playerContainerRef.current.setAttribute("webkit-playsinline", "true");
+    }
   }, []);
 
-  // ❗ Player hook'u artık DOM ref alacak
   useYoutubePlayer(room, user, roomId, playerContainerRef);
 
   return (
