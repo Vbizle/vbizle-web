@@ -148,4 +148,4 @@ export default function CameraSlot({
       <p className="text-xs text-white/80 mt-1">{nickname}</p>
     </div>
   );
-}
+}  

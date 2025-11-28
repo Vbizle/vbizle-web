@@ -1,4 +1,4 @@
-/* CAMERA SECTION — FULL VERSION (REVERT) */
+/* CAMERA SECTION — FULL FIXED VERSION */
 
 "use client";
 
@@ -236,4 +236,4 @@ export default function CameraSection({ room, user, roomId }: any) {
       )}
     </div>
   );
-}
+} 
