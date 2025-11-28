@@ -8,8 +8,15 @@ export default function YoutubeSection({ room, user, roomId }) {
 
   useEffect(() => {
     if (playerContainerRef.current) {
+      // 🔥 Mobil autoplay için şart
       playerContainerRef.current.setAttribute("playsinline", "true");
       playerContainerRef.current.setAttribute("webkit-playsinline", "true");
+
+      // 🔥 Chrome autoplay policy için MUTLAKA gerekli
+      playerContainerRef.current.setAttribute("allow", "autoplay; encrypted-media");
+
+      // 🔥 iOS/Android WebView autoplay için muted başlatmak zorunlu
+      playerContainerRef.current.setAttribute("muted", "true");
     }
   }, []);
 
@@ -29,7 +36,7 @@ export default function YoutubeSection({ room, user, roomId }) {
           ref={playerContainerRef}
           id="yt-player-container"
           style={{
-            width: "80%",
+            width: "100%",
             height: "100%",
           }}
         />

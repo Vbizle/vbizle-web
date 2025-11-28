@@ -22,7 +22,7 @@ import ChatInput from "./components/ChatInput";
 import CameraSection from "./components/CameraSection";
 import ProfilePopup from "./components/ProfilePopup";
 
-import CameraInvite from "./components/CameraInvite"; // 🔥 yeni
+import CameraInvite from "./components/CameraInvite";
 
 import { useRoomState } from "@/app/providers/RoomProvider";
 
@@ -30,12 +30,10 @@ export default function RoomPage() {
   const { roomId } = useParams();
   const { minimizedRoom, isMinimized } = useRoomState();
 
-  /** Minimize durumunda presence devre dışı */
   const disablePresence = useMemo(() => {
     return isMinimized && minimizedRoom?.roomId === roomId;
   }, [isMinimized, minimizedRoom, roomId]);
 
-  /** Minimize’den çıkınca hook’lar tekrar çalışır */
   useEffect(() => {
     if (!isMinimized) {
       console.log("🔥 Minimize modundan çıkıldı → presence aktif!");
@@ -76,35 +74,39 @@ export default function RoomPage() {
     saving,
   } = useRoomSettings(roomId as string, room, user);
 
-  /** Presence + Join (minimize durumunda devre dışı) */
+  /** Presence + Join */
   useRoomPresence(roomId as string, user, profile, disablePresence);
   useJoinMessage(roomId as string, user, profile, disablePresence);
 
-  /** UI Modals */
+  /** UI States */
   const [showOnline, setShowOnline] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
   const [profilePopup, setProfilePopup] = useState<any>(null);
 
-  /** 📌 Kamera daveti popup state’i */
+  /** Kamera daveti */
   const [invitePopup, setInvitePopup] = useState<any>(null);
 
-  /** 📌 Kamera daveti listener’ı */
   useEffect(() => {
     if (!room || !user) return;
 
     const inv = room.invite;
-
     if (!inv) return;
 
-    // Davet bu kullanıcıya ve hâlâ beklemede mi?
     if (inv.toUid === user.uid && inv.status === "pending") {
       setInvitePopup(inv);
     }
   }, [room?.invite, user]);
 
-  /** Loading */
-  if (loadingRoom || loadingProfile || !room) {
+
+  /** ----------------------------------------------------
+   *  YENİ KORUMA BLOĞU — BEYAZ EKRAN VE YT CRASH FIX
+   ---------------------------------------------------- */
+  if (typeof window === "undefined") {
+    return null; // SSR sırasında hiçbir şey render etme
+  }
+
+  if (loadingRoom || loadingProfile) {
     return (
       <div className="min-h-screen flex items-center justify-center text-lg">
         ODA YÜKLENİYOR...
@@ -112,11 +114,22 @@ export default function RoomPage() {
     );
   }
 
+  if (!room || !user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-lg">
+        ODA VERİSİ GELMEDİ...
+      </div>
+    );
+  }
+  /** ---------------------------------------------------- */
+
+
   return (
     <div className="h-screen bg-black text-white flex flex-col overflow-hidden">
 
-      {/* ÜST BLOK: HEADER + YOUTUBE + KAMERA */}
+      {/* ÜST BLOK */}
       <div className="flex-shrink-0 flex flex-col">
+
         <RoomHeader
           room={room}
           user={user}
@@ -125,13 +138,13 @@ export default function RoomPage() {
           onEditClick={() => setShowEdit(true)}
         />
 
+        {/* 🔥 YouTube + Camera sadece room kesin hazırken render edilir */}
         <YoutubeSection room={room} user={user} roomId={roomId as string} />
 
-        {/* 🔥 roomId CameraSection’a geçirildi */}
         <CameraSection room={room} user={user} roomId={roomId as string} />
       </div>
 
-      {/* ALT BLOK: CHAT */}
+      {/* ALT BLOK → CHAT */}
       <div className="flex-1 flex flex-col overflow-hidden">
         <div className="flex-1 min-h-0 overflow-hidden">
           <ChatSection
@@ -185,7 +198,6 @@ export default function RoomPage() {
         />
       )}
 
-      {/* 📌 Kamera Daveti Popup (misafir tarafı) */}
       {invitePopup && (
         <CameraInvite
           invite={invitePopup}

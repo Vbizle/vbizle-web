@@ -154,11 +154,16 @@ export default function CameraSection({ room, user, roomId }: any) {
 
     lkRoom.on("trackPublished", handlePublished);
 
-    lkRoom.remoteParticipants.forEach((p) => {
-      p.tracks.forEach((pub) => {
-        if (pub.track) handlePublished(p, pub.track);
+    /* 🔥 CRASH-FREE PARTICIPANT LOOP */
+    const participants = lkRoom.remoteParticipants;
+
+    if (participants && typeof participants.forEach === "function") {
+      participants.forEach((p) => {
+        p.tracks.forEach((pub) => {
+          if (pub.track) handlePublished(p, pub.track);
+        });
       });
-    });
+    }
 
     return () => {
       lkRoom.off("trackPublished", handlePublished);
@@ -169,7 +174,6 @@ export default function CameraSection({ room, user, roomId }: any) {
   /* --------------------------------------------
      5) FIREBASE TOGGLES
   --------------------------------------------- */
-
   const toggleHostCamera = async () => {
     if (!isHost) return;
     await updateDoc(doc(db, "rooms", roomId), {
@@ -205,7 +209,6 @@ export default function CameraSection({ room, user, roomId }: any) {
   return (
     <div className="w-full flex justify-between items-center px-6 py-4 gap-6">
 
-      {/* 👇 HOST SLOT — onLeave geri eklendi */}
       <CameraSlot
         nickname={hostName}
         isOccupied={true}
@@ -218,15 +221,12 @@ export default function CameraSection({ room, user, roomId }: any) {
         onToggleCamera={toggleHostCamera}
         onToggleMic={toggleHostMic}
         onLeave={async () => {
-          // sadece kamerayı kapat
           await updateDoc(doc(db, "rooms", roomId), {
             "hostState.camera": false,
           });
         }}
       />
 
-
-      {/* 👇 GUEST SLOT — onLeave geri eklendi */}
       {guestUid ? (
         <CameraSlot
           nickname={guestName}

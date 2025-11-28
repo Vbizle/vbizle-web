@@ -12,7 +12,7 @@ export function useYoutubePlayer(room: any, user: any, roomId: string, container
   const isHost = user?.uid === room?.ownerId;
 
   /* ------------------------------------------------
-     1) API LOAD — SAFE, MOBILE + RENDER FIX
+     1) API LOAD — MOBILE + RENDER SAFE
   ------------------------------------------------ */
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -22,15 +22,15 @@ export function useYoutubePlayer(room: any, user: any, roomId: string, container
       return;
     }
 
-    const existing = document.getElementById("yt-api-script");
-
-    if (!existing) {
+    // Script varsa yenisini ekleme
+    if (!document.getElementById("yt-api-script")) {
       const tag = document.createElement("script");
       tag.src = "https://www.youtube.com/iframe_api";
       tag.id = "yt-api-script";
       document.body.appendChild(tag);
     }
 
+    // Fallback polling
     const interval = setInterval(() => {
       if (window.YT && window.YT.Player) {
         clearInterval(interval);
@@ -41,9 +41,8 @@ export function useYoutubePlayer(room: any, user: any, roomId: string, container
     return () => clearInterval(interval);
   }, []);
 
-
   /* ------------------------------------------------
-     2) PLAYER INIT — AUTOPLAY MOBILE FIX
+     2) PLAYER INIT — MOBILE AUTOPLAY FIX
   ------------------------------------------------ */
   useEffect(() => {
     if (!apiReady) return;
@@ -63,14 +62,14 @@ export function useYoutubePlayer(room: any, user: any, roomId: string, container
       videoId: room.youtube,
       playerVars: {
         autoplay: 1,
+        playsinline: 1,
         controls: isHost ? 1 : 0,
         disablekb: isHost ? 0 : 1,
         rel: 0,
         modestbranding: 1,
 
-        // 🔥 Mobil crash fix — autoplay çalışsın diye ses kapalı başlar
-        playsinline: 1,
-        mute: isHost && isMobile ? 1 : 0,
+        // 🔥 MOBİL AUTOPLAY İÇİN EN ÖNEMLİ KISIM
+        mute: 1, // ilk açılışta sessiz (mobil policy)
       },
 
       events: {
@@ -82,12 +81,16 @@ export function useYoutubePlayer(room: any, user: any, roomId: string, container
               playerRef.current.seekTo(room.videoTime, true);
             }
 
-            if (typeof playerRef.current.setVolume === "function") {
-              playerRef.current.setVolume(room.videoVolume ?? 100);
-            }
+            playerRef.current.playVideo();
 
-            if (room.playerState === 1) playerRef.current.playVideo();
-            else playerRef.current.pauseVideo();
+            // 🔥 Sessiz başlattık, host için 1 saniye sonra sesi geri açarız
+            setTimeout(() => {
+              if (isHost) {
+                playerRef.current.unMute?.();
+                playerRef.current.setVolume(room.videoVolume ?? 100);
+              }
+            }, 800);
+
           } catch {}
         },
 
@@ -100,9 +103,7 @@ export function useYoutubePlayer(room: any, user: any, roomId: string, container
             let cur = 0;
 
             try {
-              if (typeof playerRef.current.getCurrentTime === "function") {
-                cur = playerRef.current.getCurrentTime();
-              }
+              cur = playerRef.current.getCurrentTime();
             } catch {}
 
             await updateDoc(doc(db, "rooms", roomId), {
@@ -117,9 +118,8 @@ export function useYoutubePlayer(room: any, user: any, roomId: string, container
 
   }, [apiReady, room?.youtube]);
 
-
   /* ------------------------------------------------
-     3) HOST — VOLUME SYNC
+     3) HOST VOLUME SYNC
   ------------------------------------------------ */
   useEffect(() => {
     if (!playerReady) return;
@@ -128,16 +128,10 @@ export function useYoutubePlayer(room: any, user: any, roomId: string, container
     const interval = setInterval(async () => {
       if (!playerRef.current) return;
 
-      let vol = null;
-
-      if (typeof playerRef.current.getVolume === "function") {
-        vol = playerRef.current.getVolume();
-      }
+      const vol = playerRef.current.getVolume?.();
 
       if (vol !== null && vol !== room.videoVolume) {
-        await updateDoc(doc(db, "rooms", roomId), {
-          videoVolume: vol
-        });
+        await updateDoc(doc(db, "rooms", roomId), { videoVolume: vol });
       }
 
     }, 300);
@@ -145,27 +139,22 @@ export function useYoutubePlayer(room: any, user: any, roomId: string, container
     return () => clearInterval(interval);
   }, [playerReady, isHost, room.videoVolume]);
 
-
   /* ------------------------------------------------
-     4) GUEST — FOLLOW HOST VOLUME
+     4) GUEST FOLLOW HOST VOLUME
   ------------------------------------------------ */
   useEffect(() => {
     if (!playerReady) return;
     if (isHost) return;
-    if (!playerRef.current) return;
 
-    if (typeof playerRef.current.setVolume === "function") {
-      playerRef.current.setVolume(room.videoVolume ?? 100);
-    }
+    playerRef.current?.setVolume?.(room.videoVolume ?? 100);
+
   }, [playerReady, room.videoVolume]);
 
-
   /* ------------------------------------------------
-     5) GUEST SYNC
+     5) GUEST SYNC SEEK + PLAY/PAUSE
   ------------------------------------------------ */
   useEffect(() => {
     if (!playerReady) return;
-    if (!playerRef.current) return;
     if (isHost) return;
 
     let target = room.videoTime || 0;
@@ -178,13 +167,15 @@ export function useYoutubePlayer(room: any, user: any, roomId: string, container
 
     try {
       const cur = playerRef.current.getCurrentTime();
-
       if (Math.abs(cur - target) > 1) {
         playerRef.current.seekTo(target, true);
       }
 
-      if (room.playerState === 1) playerRef.current.playVideo();
-      else playerRef.current.pauseVideo();
+      room.playerState === 1
+        ? playerRef.current.playVideo()
+        : playerRef.current.pauseVideo();
+
     } catch {}
+
   }, [playerReady, room.playerState, room.videoTime, room.lastUpdate]);
 }
