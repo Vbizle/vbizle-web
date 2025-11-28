@@ -17,13 +17,11 @@ export function useYoutubePlayer(room: any, user: any, roomId: string, container
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    // Eğer API daha önce yüklenmişse:
     if (window.YT && window.YT.Player) {
       setApiReady(true);
       return;
     }
 
-    // Script tekrar eklenmesin diye kontrol
     const existing = document.getElementById("yt-api-script");
 
     if (!existing) {
@@ -33,7 +31,6 @@ export function useYoutubePlayer(room: any, user: any, roomId: string, container
       document.body.appendChild(tag);
     }
 
-    // Fallback polling (Render / mobile için şart)
     const interval = setInterval(() => {
       if (window.YT && window.YT.Player) {
         clearInterval(interval);
@@ -45,9 +42,8 @@ export function useYoutubePlayer(room: any, user: any, roomId: string, container
   }, []);
 
 
-
   /* ------------------------------------------------
-     2) PLAYER INIT
+     2) PLAYER INIT — AUTOPLAY MOBILE FIX
   ------------------------------------------------ */
   useEffect(() => {
     if (!apiReady) return;
@@ -56,11 +52,12 @@ export function useYoutubePlayer(room: any, user: any, roomId: string, container
     const el = containerRef.current;
     if (!el) return;
 
-    // Eski player varsa temizle
     if (playerRef.current) {
       try { playerRef.current.destroy(); } catch {}
       playerRef.current = null;
     }
+
+    const isMobile = /Android|iPhone|iPad/i.test(navigator.userAgent);
 
     playerRef.current = new window.YT.Player(el, {
       videoId: room.youtube,
@@ -70,6 +67,10 @@ export function useYoutubePlayer(room: any, user: any, roomId: string, container
         disablekb: isHost ? 0 : 1,
         rel: 0,
         modestbranding: 1,
+
+        // 🔥 Mobil crash fix — autoplay çalışsın diye ses kapalı başlar
+        playsinline: 1,
+        mute: isHost && isMobile ? 1 : 0,
       },
 
       events: {
@@ -117,7 +118,6 @@ export function useYoutubePlayer(room: any, user: any, roomId: string, container
   }, [apiReady, room?.youtube]);
 
 
-
   /* ------------------------------------------------
      3) HOST — VOLUME SYNC
   ------------------------------------------------ */
@@ -146,7 +146,6 @@ export function useYoutubePlayer(room: any, user: any, roomId: string, container
   }, [playerReady, isHost, room.videoVolume]);
 
 
-
   /* ------------------------------------------------
      4) GUEST — FOLLOW HOST VOLUME
   ------------------------------------------------ */
@@ -161,9 +160,8 @@ export function useYoutubePlayer(room: any, user: any, roomId: string, container
   }, [playerReady, room.videoVolume]);
 
 
-
   /* ------------------------------------------------
-     5) GUEST SYNC (TIME + PLAY/PAUSE)
+     5) GUEST SYNC
   ------------------------------------------------ */
   useEffect(() => {
     if (!playerReady) return;
