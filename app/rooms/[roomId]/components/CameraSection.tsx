@@ -205,6 +205,7 @@ export default function CameraSection({ room, user, roomId }: any) {
   return (
     <div className="w-full flex justify-between items-center px-6 py-4 gap-6">
 
+      {/* 👇 HOST SLOT — onLeave geri eklendi */}
       <CameraSlot
         nickname={hostName}
         isOccupied={true}
@@ -216,8 +217,16 @@ export default function CameraSection({ room, user, roomId }: any) {
         localTrack={isHost ? localVideoTrack : null}
         onToggleCamera={toggleHostCamera}
         onToggleMic={toggleHostMic}
+        onLeave={async () => {
+          // sadece kamerayı kapat
+          await updateDoc(doc(db, "rooms", roomId), {
+            "hostState.camera": false,
+          });
+        }}
       />
 
+
+      {/* 👇 GUEST SLOT — onLeave geri eklendi */}
       {guestUid ? (
         <CameraSlot
           nickname={guestName}
@@ -230,10 +239,15 @@ export default function CameraSection({ room, user, roomId }: any) {
           localTrack={isGuestSelf ? localVideoTrack : null}
           onToggleCamera={toggleGuestCamera}
           onToggleMic={toggleGuestMic}
+          onLeave={async () => {
+            await updateDoc(doc(db, "rooms", roomId), {
+              "guestState.camera": false,
+            });
+          }}
         />
       ) : (
         <CameraSlot nickname="Misafir Koltuğu" isOccupied={false} />
       )}
     </div>
   );
-} 
+}
