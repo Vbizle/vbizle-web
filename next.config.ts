@@ -3,10 +3,6 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   reactStrictMode: false,
 
-  // 🔥 runtime hatasını önlemek için boş bırakıyoruz
-  experimental: {},
-
-  // 🔥 Build sırasında TS ve ESLint hatalarını yok say
   typescript: {
     ignoreBuildErrors: true,
   },
@@ -19,35 +15,26 @@ const nextConfig: NextConfig = {
       {
         source: "/(.*)",
         headers: [
-          // Kamera + mikrofon + ekran paylaşımı
+          // Kamera ve mikrofon
           {
             key: "Permissions-Policy",
+            value: "camera=(self), microphone=(self), display-capture=(self)",
+          },
+
+          // YouTube embed fix
+          {
+            key: "Content-Security-Policy",
             value:
-              "camera=(self *), microphone=(self *), display-capture=(self *);",
+              "frame-src https://www.youtube.com https://www.youtube-nocookie.com https://*.youtube.com https://*.google.com 'self'; child-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; img-src * blob: data: https:; media-src * blob: data: https:;",
           },
 
-          // Android WebView için MUTLAKA OLMASI GEREK
+          // Firebase Storage resimleri için
           {
-            key: "X-Requested-With",
-            value: "",
+            key: "Access-Control-Allow-Origin",
+            value: "*",
           },
 
-          // WebRTC + WebView güvenli çalışması için
-          {
-            key: "Cross-Origin-Opener-Policy",
-            value: "same-origin",
-          },
-          {
-            key: "Cross-Origin-Embedder-Policy",
-            value: "require-corp",
-          },
-
-          // iframe + YouTube embed fix
-          {
-            key: "X-Frame-Options",
-            value: "ALLOWALL",
-          },
-
+          { key: "X-Frame-Options", value: "ALLOWALL" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           { key: "X-Content-Type-Options", value: "nosniff" },
         ],
