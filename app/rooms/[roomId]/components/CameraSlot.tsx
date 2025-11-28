@@ -13,7 +13,6 @@ type Props = {
   onToggleMic?: () => void;
   onLeave?: () => void;
 
-  // 🔥 YENİ LiveKit track prop'ları
   localTrack?: any;
   remoteTrack?: any;
 };
@@ -42,20 +41,21 @@ export default function CameraSlot({
     const container = containerRef.current;
     if (!container) return;
 
-    // Önce eski video elementleri temizle
     container.innerHTML = "";
 
-    // Kamera kapalıysa hiçbir şey gösterme
     if (!cameraOn) return;
 
     const track = isSelf ? localTrack : remoteTrack;
     if (!track) return;
 
-    // Track'i DOM'a bağla
     const element = track.attach();
+
     element.style.width = "100%";
     element.style.height = "100%";
     element.style.objectFit = "cover";
+
+    // 🔥 SADECE KENDİ KAMERANI TERS ÇEVİR (Mirror)
+    element.style.transform = isSelf ? "scaleX(-1)" : "scaleX(1)";
 
     container.appendChild(element);
 
@@ -65,7 +65,7 @@ export default function CameraSlot({
         if (container) container.innerHTML = "";
       } catch {}
     };
-  }, [localTrack, remoteTrack, cameraOn]);
+  }, [localTrack, remoteTrack, cameraOn, isSelf]);
 
   return (
     <div className="flex flex-col items-center gap-2 select-none">
@@ -103,7 +103,7 @@ export default function CameraSlot({
           </span>
         )}
 
-        {/* Overlay kontrol butonları (sadece kendi kameranda) */}
+        {/* Overlay kontrol butonları */}
         {isOccupied && isSelf && showControls && (
           <div
             className="
