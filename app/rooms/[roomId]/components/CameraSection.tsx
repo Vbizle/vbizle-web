@@ -1,9 +1,8 @@
-/* CAMERA SECTION — FIXED WITH onLeave SUPPORT */
+/* CAMERA SECTION — FULL VERSION (REVERT) */
 
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";             // ★ EKLENDİ
 import CameraSlot from "./CameraSlot";
 import { db } from "@/firebase/firebaseConfig";
 import { doc, updateDoc } from "firebase/firestore";
@@ -17,8 +16,6 @@ import {
 } from "livekit-client";
 
 export default function CameraSection({ room, user, roomId }: any) {
-  const router = useRouter();                            // ★ EKLENDİ
-
   const currentUid = user?.uid;
 
   const hostUid = room.ownerId;
@@ -45,25 +42,9 @@ export default function CameraSection({ room, user, roomId }: any) {
   const [remoteGuestVideo, setRemoteGuestVideo] = useState<any>(null);
 
 
-  /* ------------------------------------------------
-     0) ONLEAVE / ODAYI KÜÇÜLT — ★ YENİ EKLENDİ ★
-  ------------------------------------------------ */
-  const handleLeave = () => {
-    const data = {
-      roomId,
-      roomImage: room.image || null,
-    };
-
-    localStorage.setItem("minimizedRoom", JSON.stringify(data));
-    localStorage.setItem("isMinimized", "true");
-
-    router.push("/");   // Anasayfa
-  };
-
-
-  /* ------------------------------------------------
+  /* --------------------------------------------
      1) TOKEN → CONNECT
-  ------------------------------------------------- */
+  --------------------------------------------- */
   useEffect(() => {
     async function connectLK() {
       if (lkRoom) return;
@@ -91,9 +72,9 @@ export default function CameraSection({ room, user, roomId }: any) {
   }, []);
 
 
-  /* ------------------------------------------------
+  /* --------------------------------------------
      2) LOCAL VIDEO TRACK
-  ------------------------------------------------- */
+  --------------------------------------------- */
   useEffect(() => {
     if (!lkRoom) return;
 
@@ -118,9 +99,9 @@ export default function CameraSection({ room, user, roomId }: any) {
   }, [lkRoom, hostCamera, guestCamera]);
 
 
-  /* ------------------------------------------------
+  /* --------------------------------------------
      3) LOCAL AUDIO TRACK
-  ------------------------------------------------- */
+  --------------------------------------------- */
   useEffect(() => {
     if (!lkRoom) return;
 
@@ -145,9 +126,9 @@ export default function CameraSection({ room, user, roomId }: any) {
   }, [lkRoom, hostMic, guestMic]);
 
 
-  /* ------------------------------------------------
-     4) REMOTE PARTICIPANTS
-  ------------------------------------------------- */
+  /* --------------------------------------------
+     4) REMOTE PARTICIPANTS — ULTRA STABLE
+  --------------------------------------------- */
   useEffect(() => {
     if (!lkRoom) return;
 
@@ -185,9 +166,9 @@ export default function CameraSection({ room, user, roomId }: any) {
   }, [lkRoom]);
 
 
-  /* ------------------------------------------------
+  /* --------------------------------------------
      5) FIREBASE TOGGLES
-  ------------------------------------------------- */
+  --------------------------------------------- */
 
   const toggleHostCamera = async () => {
     if (!isHost) return;
@@ -218,13 +199,12 @@ export default function CameraSection({ room, user, roomId }: any) {
   };
 
 
-  /* ------------------------------------------------
+  /* --------------------------------------------
      6) RENDER
-  ------------------------------------------------- */
+  --------------------------------------------- */
   return (
     <div className="w-full flex justify-between items-center px-6 py-4 gap-6">
 
-      {/* HOST SLOT */}
       <CameraSlot
         nickname={hostName}
         isOccupied={true}
@@ -236,10 +216,8 @@ export default function CameraSection({ room, user, roomId }: any) {
         localTrack={isHost ? localVideoTrack : null}
         onToggleCamera={toggleHostCamera}
         onToggleMic={toggleHostMic}
-        onLeave={handleLeave}         // ★ EKLENDİ
       />
 
-      {/* GUEST SLOT */}
       {guestUid ? (
         <CameraSlot
           nickname={guestName}
@@ -252,7 +230,6 @@ export default function CameraSection({ room, user, roomId }: any) {
           localTrack={isGuestSelf ? localVideoTrack : null}
           onToggleCamera={toggleGuestCamera}
           onToggleMic={toggleGuestMic}
-          onLeave={handleLeave}       // ★ EKLENDİ
         />
       ) : (
         <CameraSlot nickname="Misafir Koltuğu" isOccupied={false} />
