@@ -12,30 +12,37 @@ export default function YoutubeSection({ room, user, roomId }) {
       playerContainerRef.current.setAttribute("playsinline", "true");
       playerContainerRef.current.setAttribute("webkit-playsinline", "true");
 
-      // 🔥 Chrome autoplay policy için MUTLAKA gerekli
+      // 🔥 Chrome autoplay policy için gerekli
       playerContainerRef.current.setAttribute("allow", "autoplay; encrypted-media");
 
-      // 🔥 iOS/Android WebView autoplay için muted başlatmak zorunlu
+      // 🔥 Mobil WebView autoplay için muted şart
       playerContainerRef.current.setAttribute("muted", "true");
     }
   }, []);
 
+  // 🔥 YouTube Player Hook
   useYoutubePlayer(room, user, roomId, playerContainerRef);
 
   return (
     <div className="w-full bg-black flex flex-col items-center">
       <div
-        className="w-full flex items-center justify-center"
+        className="w-full relative flex items-center justify-center"
         style={{
-          height: "45vh",
-          position: "relative",
+          // 🚀 Video artık tam genişlik 16:9 ORAN sabit
+          aspectRatio: "16 / 9",
+          maxHeight: "50vh", // ekranın üst yarısını doldurur
+          width: "100%",
           overflow: "hidden",
+          backgroundColor: "black",
         }}
       >
         <div
           ref={playerContainerRef}
           id="yt-player-container"
           style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
             width: "100%",
             height: "100%",
           }}

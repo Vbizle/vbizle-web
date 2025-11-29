@@ -31,44 +31,51 @@ export default function CameraSlot({
   localTrack,
   remoteTrack,
 }: Props) {
+
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const videoRef = useRef<any>(null);
   const [showControls, setShowControls] = useState(false);
 
-  /** ------------------------------------------------------------
-   *   1) LiveKit TRACK attach / detach
-   * ------------------------------------------------------------ */
+  /* ------------------------------------------------------------------
+     FIX: Video DOM ASLA silinmez, sadece track değişince yeniden attach
+  ------------------------------------------------------------------ */
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
-    container.innerHTML = "";
-
-    if (!cameraOn) return;
-
     const track = isSelf ? localTrack : remoteTrack;
-    if (!track) return;
+    if (!track || !cameraOn) {
+      if (videoRef.current) videoRef.current.style.display = "none";
+      return;
+    }
 
-    const element = track.attach();
+    // Video elementi sadece bir kez oluşturulur
+    if (!videoRef.current) {
+      videoRef.current = document.createElement("video");
+      videoRef.current.autoplay = true;
+      videoRef.current.playsInline = true;
+      videoRef.current.muted = isSelf; // self video muted
+      videoRef.current.style.width = "100%";
+      videoRef.current.style.height = "100%";
+      videoRef.current.style.objectFit = "cover";
+      container.appendChild(videoRef.current);
+    }
 
-    element.style.width = "100%";
-    element.style.height = "100%";
-    element.style.objectFit = "cover";
+    // Mirror
+    videoRef.current.style.transform = "scaleX(-1)";
 
-    // 🔥 SADECE KENDİ KAMERANI TERS ÇEVİR (Mirror)
-    element.style.transform = isSelf ? "scaleX(-1)" : "scaleX(1)";
+    // Attach track
+    track.attach(videoRef.current);
 
-    container.appendChild(element);
+    videoRef.current.style.display = "block";
 
-    return () => {
-      try {
-        track?.detach();
-        if (container) container.innerHTML = "";
-      } catch {}
-    };
+    return () => {};
   }, [localTrack, remoteTrack, cameraOn, isSelf]);
+
 
   return (
     <div className="flex flex-col items-center gap-2 select-none">
+
       <div
         className="
           relative
@@ -83,21 +90,17 @@ export default function CameraSlot({
         onMouseLeave={() => setShowControls(false)}
         onClick={() => setShowControls(!showControls)}
       >
-        {/* 🔥 LiveKit video burada render edilecek */}
-        <div
-          ref={containerRef}
-          className="absolute inset-0"
-          style={{ display: cameraOn ? "block" : "none" }}
-        />
+
+        <div ref={containerRef} className="absolute inset-0" />
 
         {/* Kamera kapalıysa yazı */}
-        {isOccupied ? (
-          !cameraOn && (
-            <span className="text-[11px] text-white/60 z-10">
-              Kamera Kapalı
-            </span>
-          )
-        ) : (
+        {isOccupied && !cameraOn && (
+          <span className="text-[11px] text-white/60 z-10">
+            Kamera Kapalı
+          </span>
+        )}
+
+        {!isOccupied && (
           <span className="text-[11px] text-white/30 z-10">
             {isHost ? "Host Koltuğu" : "Misafir Koltuğu"}
           </span>
@@ -148,4 +151,4 @@ export default function CameraSlot({
       <p className="text-xs text-white/80 mt-1">{nickname}</p>
     </div>
   );
-}  
+}

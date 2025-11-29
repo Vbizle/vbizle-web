@@ -4,7 +4,13 @@ import { useEffect, useRef, useState } from "react";
 import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/firebase/firebaseConfig";
 
-export function useYoutubePlayer(room: any, user: any, roomId: string, containerRef: any) {
+export function useYoutubePlayer(
+  room: any,
+  user: any,
+  roomId: string,
+  containerRef: any,
+  setYtReady?: (v: boolean) => void   // ⭐ Kamera için YT hazır callback
+) {
   const playerRef = useRef<any>(null);
   const [apiReady, setApiReady] = useState(false);
   const [playerReady, setPlayerReady] = useState(false);
@@ -22,7 +28,6 @@ export function useYoutubePlayer(room: any, user: any, roomId: string, container
       return;
     }
 
-    // Script varsa yenisini ekleme
     if (!document.getElementById("yt-api-script")) {
       const tag = document.createElement("script");
       tag.src = "https://www.youtube.com/iframe_api";
@@ -30,7 +35,6 @@ export function useYoutubePlayer(room: any, user: any, roomId: string, container
       document.body.appendChild(tag);
     }
 
-    // Fallback polling
     const interval = setInterval(() => {
       if (window.YT && window.YT.Player) {
         clearInterval(interval);
@@ -42,7 +46,7 @@ export function useYoutubePlayer(room: any, user: any, roomId: string, container
   }, []);
 
   /* ------------------------------------------------
-     2) PLAYER INIT — MOBILE AUTOPLAY FIX
+     2) PLAYER INIT — AUTOPLAY + TWA FIXED
   ------------------------------------------------ */
   useEffect(() => {
     if (!apiReady) return;
@@ -56,49 +60,64 @@ export function useYoutubePlayer(room: any, user: any, roomId: string, container
       playerRef.current = null;
     }
 
-    const isMobile = /Android|iPhone|iPad/i.test(navigator.userAgent);
-
     playerRef.current = new window.YT.Player(el, {
       videoId: room.youtube,
+
       playerVars: {
         autoplay: 1,
         playsinline: 1,
+        modestbranding: 1,
+        rel: 0,
         controls: isHost ? 1 : 0,
         disablekb: isHost ? 0 : 1,
-        rel: 0,
-        modestbranding: 1,
-
-        // 🔥 MOBİL AUTOPLAY İÇİN EN ÖNEMLİ KISIM
-        mute: 1, // ilk açılışta sessiz (mobil policy)
+        mute: 1, 
       },
 
       events: {
         onReady: () => {
           setPlayerReady(true);
+          setYtReady?.(true);  // ⭐ Kamera için YT hazır sinyali
 
           try {
             if (room.videoTime) {
               playerRef.current.seekTo(room.videoTime, true);
             }
 
-            playerRef.current.playVideo();
+            playerRef.current.playVideo?.();
 
-            // 🔥 Sessiz başlattık, host için 1 saniye sonra sesi geri açarız
-            setTimeout(() => {
-              if (isHost) {
-                playerRef.current.unMute?.();
-                playerRef.current.setVolume(room.videoVolume ?? 100);
-              }
-            }, 800);
+            /* ------------------------------------------------
+               🔥 MİSAFİR OTOMATİK UNMUTE — TWA FIX
+            ------------------------------------------------ */
+            if (!isHost) {
+              setTimeout(() => {
+                try {
+                  playerRef.current.playVideo?.();
+                  playerRef.current.unMute?.();
+                  playerRef.current.setVolume(100);
+                  playerRef.current.unMute?.();
+                } catch (e) {
+                  console.log("guest unmute error", e);
+                }
+              }, 350);
+            }
 
-          } catch {}
+            /* ------------------------------------------------
+               🔥 HOST — Volume sync
+            ------------------------------------------------ */
+            if (isHost) {
+              playerRef.current.unMute?.();
+              playerRef.current.setVolume(room.videoVolume ?? 100);
+            }
+
+          } catch (err) {
+            console.log("YT Ready err:", err);
+          }
         },
 
         onStateChange: async (e: any) => {
           if (!isHost) return;
 
           const st = e.data;
-
           if (st === 1 || st === 2) {
             let cur = 0;
 
@@ -119,7 +138,7 @@ export function useYoutubePlayer(room: any, user: any, roomId: string, container
   }, [apiReady, room?.youtube]);
 
   /* ------------------------------------------------
-     3) HOST VOLUME SYNC
+     3) HOST → VOLUME SYNC FIX
   ------------------------------------------------ */
   useEffect(() => {
     if (!playerReady) return;
@@ -129,29 +148,28 @@ export function useYoutubePlayer(room: any, user: any, roomId: string, container
       if (!playerRef.current) return;
 
       const vol = playerRef.current.getVolume?.();
-
-      if (vol !== null && vol !== room.videoVolume) {
+      if (vol != null && vol !== room.videoVolume) {
         await updateDoc(doc(db, "rooms", roomId), { videoVolume: vol });
       }
-
     }, 300);
 
     return () => clearInterval(interval);
   }, [playerReady, isHost, room.videoVolume]);
 
   /* ------------------------------------------------
-     4) GUEST FOLLOW HOST VOLUME
+     4) GUEST → FOLLOW HOST VOLUME
   ------------------------------------------------ */
   useEffect(() => {
     if (!playerReady) return;
     if (isHost) return;
 
-    playerRef.current?.setVolume?.(room.videoVolume ?? 100);
-
+    try {
+      playerRef.current.setVolume(room.videoVolume ?? 100);
+    } catch {}
   }, [playerReady, room.videoVolume]);
 
   /* ------------------------------------------------
-     5) GUEST SYNC SEEK + PLAY/PAUSE
+     5) GUEST SYNC SEEK + PLAY/PAUSE FIX
   ------------------------------------------------ */
   useEffect(() => {
     if (!playerReady) return;
@@ -166,16 +184,17 @@ export function useYoutubePlayer(room: any, user: any, roomId: string, container
     }
 
     try {
-      const cur = playerRef.current.getCurrentTime();
-      if (Math.abs(cur - target) > 1) {
+      const cur = playerRef.current.getCurrentTime?.();
+      if (cur && Math.abs(cur - target) > 1) {
         playerRef.current.seekTo(target, true);
       }
 
-      room.playerState === 1
-        ? playerRef.current.playVideo()
-        : playerRef.current.pauseVideo();
+      if (room.playerState === 1) {
+        playerRef.current.playVideo();
+      } else {
+        playerRef.current.pauseVideo();
+      }
 
     } catch {}
-
   }, [playerReady, room.playerState, room.videoTime, room.lastUpdate]);
 }

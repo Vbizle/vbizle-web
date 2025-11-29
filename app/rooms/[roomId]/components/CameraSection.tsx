@@ -1,5 +1,3 @@
-/* CAMERA SECTION — PERMISSION FIX + AUTO MIC ON */
-
 "use client";
 
 import { useEffect, useState } from "react";
@@ -10,8 +8,10 @@ import { doc, updateDoc } from "firebase/firestore";
 import {
   Room,
   RemoteParticipant,
-  Track,
+  TrackPublication,
   createLocalTracks,
+  createLocalAudioTrack,
+  createLocalVideoTrack
 } from "livekit-client";
 
 export default function CameraSection({ room, user, roomId }: any) {
@@ -23,16 +23,13 @@ export default function CameraSection({ room, user, roomId }: any) {
   const isHost = currentUid === hostUid;
   const isGuestSelf = currentUid === guestUid;
 
-  const hostName = room.hostName || "Host";
-  const guestName = room.guestName || "Misafir";
-
   const hostCamera = room.hostState?.camera ?? false;
   const hostMic = room.hostState?.mic ?? false;
 
   const guestCamera = room.guestState?.camera ?? false;
   const guestMic = room.guestState?.mic ?? false;
 
-  const [lkRoom, setLkRoom] = useState<Room | null>(null);
+  const [lkRoom, setLkRoom] = useState<any>(null);
 
   const [localVideoTrack, setLocalVideoTrack] = useState<any>(null);
   const [localAudioTrack, setLocalAudioTrack] = useState<any>(null);
@@ -40,179 +37,155 @@ export default function CameraSection({ room, user, roomId }: any) {
   const [remoteHostVideo, setRemoteHostVideo] = useState<any>(null);
   const [remoteGuestVideo, setRemoteGuestVideo] = useState<any>(null);
 
-
-  /* ---------------------------------------------------------
+  /* ------------------------------------------------------------
      1) CONNECT LIVEKIT
-  ---------------------------------------------------------- */
+  ------------------------------------------------------------ */
   useEffect(() => {
     async function connectLK() {
       if (lkRoom) return;
 
-      const identity = currentUid;
-
       const resp = await fetch(
-        `${process.env.NEXT_PUBLIC_LIVEKIT_TOKEN_ENDPOINT}?room=${roomId}&identity=${identity}`
+        `${process.env.NEXT_PUBLIC_LIVEKIT_TOKEN_ENDPOINT}?room=${roomId}&identity=${currentUid}`
       );
 
-      if (!resp.ok) return;
       const { token } = await resp.json();
 
       const newRoom = new Room({
         adaptiveStream: true,
-        dynacast: true,
+        dynacast: true
       });
 
       await newRoom.connect(process.env.NEXT_PUBLIC_LIVEKIT_URL!, token);
+
       setLkRoom(newRoom);
     }
 
     connectLK();
   }, []);
 
-
-  /* ---------------------------------------------------------
-     2) START OR STOP LOCAL CAMERA + MIC (PERMISSION FIXED)
-  ---------------------------------------------------------- */
+  /* ------------------------------------------------------------
+     2) LOCAL TRACK LOGIC (MIC + CAMERA FINAL FIX)
+  ------------------------------------------------------------ */
   useEffect(() => {
     if (!lkRoom) return;
 
-    async function startTracks() {
-      if (localVideoTrack || localAudioTrack) return;
+    async function handleTracks() {
+      /* --------- VIDEO --------- */
+      if (hostCamera || guestCamera) {
+        if (!localVideoTrack) {
+          const video = await createLocalVideoTrack();
+          setLocalVideoTrack(video);
+        }
 
-      // Kamera + ses izni birlikte burada istenir
-      const tracks = await createLocalTracks({
-        audio: true,
-        video: true,
-      });
-
-      const video = tracks.find((t) => t.kind === "video");
-      const audio = tracks.find((t) => t.kind === "audio");
-
-      if (video) {
-        setLocalVideoTrack(video);
-        lkRoom.localParticipant.publishTrack(video);
-      }
-
-      if (audio) {
-        audio.setMuted(false); // ✔ otomatik ses açık
-        setLocalAudioTrack(audio);
-        lkRoom.localParticipant.publishTrack(audio);
-      }
-    }
-
-    function stopTracks() {
-      if (localVideoTrack) {
+        if (localVideoTrack) {
+          lkRoom.localParticipant.publishTrack(localVideoTrack);
+        }
+      } else if (localVideoTrack) {
         lkRoom.localParticipant.unpublishTrack(localVideoTrack);
-        localVideoTrack.stop();
-        setLocalVideoTrack(null);
       }
 
-      if (localAudioTrack) {
-        lkRoom.localParticipant.unpublishTrack(localAudioTrack);
-        localAudioTrack.stop();
+      /* --------- MICROPHONE FINAL FIX --------- */
+
+      const micOn = isHost ? hostMic : isGuestSelf ? guestMic : false;
+
+      if (micOn) {
+        // 🔥 Yeni audio track oluştur
+        const audio = await createLocalAudioTrack();
+
+        // Eski track varsa kaldır
+        if (localAudioTrack) {
+          try {
+            lkRoom.localParticipant.unpublishTrack(localAudioTrack);
+            localAudioTrack.stop();
+          } catch {}
+        }
+
+        setLocalAudioTrack(audio);
+
+        // Yeni track yayınla
+        lkRoom.localParticipant.publishTrack(audio);
+      } else {
+        // Mikrofon kapatma
+        if (localAudioTrack) {
+          try {
+            lkRoom.localParticipant.unpublishTrack(localAudioTrack);
+            localAudioTrack.stop();
+          } catch {}
+        }
         setLocalAudioTrack(null);
       }
     }
 
-    const shouldStart =
-      (isHost && (hostCamera || hostMic)) ||
-      (isGuestSelf && (guestCamera || guestMic));
-
-    shouldStart ? startTracks() : stopTracks();
+    handleTracks();
   }, [
     lkRoom,
-    hostCamera,
-    guestCamera,
     hostMic,
     guestMic,
+    hostCamera,
+    guestCamera
   ]);
 
-
-  /* ---------------------------------------------------------
-     3) HANDLE REMOTE PARTICIPANTS
-  ---------------------------------------------------------- */
+  /* ------------------------------------------------------------
+     3) REMOTE TRACKS
+  ------------------------------------------------------------ */
   useEffect(() => {
     if (!lkRoom) return;
 
-    const handlePublished = (participant: RemoteParticipant, track) => {
-      track.on("subscribed", (subTrack: any) => {
-        // VIDEO
-        if (subTrack.kind === Track.Kind.Video) {
-          if (participant.identity === hostUid)
-            setRemoteHostVideo(subTrack);
-          if (participant.identity === guestUid)
-            setRemoteGuestVideo(subTrack);
-        }
+    const onSub = (track: any, pub: any, participant: any) => {
+      if (track.kind === "video") {
+        if (participant.identity === hostUid) setRemoteHostVideo(track);
+        if (participant.identity === guestUid) setRemoteGuestVideo(track);
+      }
 
-        // AUDIO
-        if (subTrack.kind === Track.Kind.Audio) {
-          const audioEl = subTrack.attach();
-          audioEl.autoplay = true;
-          audioEl.playsInline = true;
-          audioEl.muted = false;
-          audioEl.style.display = "none";
-          document.body.appendChild(audioEl);
-        }
-      });
+      if (track.kind === "audio") {
+        const el = track.attach();
+        el.autoplay = true;
+        el.playsInline = true;
+        el.muted = false;
+        el.style.display = "none";
+        document.body.appendChild(el);
+      }
     };
 
-    lkRoom.on("trackPublished", handlePublished);
+    lkRoom.on("trackSubscribed", onSub);
 
-    // Existing participants
-    const participants = lkRoom.remoteParticipants;
-    participants.forEach((p) => {
-      p.tracks.forEach((pub) => {
-        if (pub.track) handlePublished(p, pub.track);
+    lkRoom.remoteParticipants.forEach((p: any) => {
+      p.getTrackPublications().forEach((pub: any) => {
+        if (pub.isSubscribed && pub.track) onSub(pub.track, pub, p);
       });
     });
 
-    return () => {
-      lkRoom.off("trackPublished", handlePublished);
-    };
+    return () => lkRoom.off("trackSubscribed", onSub);
   }, [lkRoom]);
 
-
-  /* ---------------------------------------------------------
-     4) FIREBASE STATE TOGGLES
-  ---------------------------------------------------------- */
-
-  const toggleHostCamera = async () => {
-    if (!isHost) return;
+  /* ------------------------------------------------------------
+     4) LEAVE
+  ------------------------------------------------------------ */
+  const leaveAsHost = async () => {
+    try { lkRoom.disconnect(); } catch {}
     await updateDoc(doc(db, "rooms", roomId), {
-      "hostState.camera": !hostCamera,
+      "hostState.camera": false,
+      "hostState.mic": false
     });
   };
 
-  const toggleHostMic = async () => {
-    if (!isHost) return;
+  const leaveAsGuest = async () => {
+    try { lkRoom.disconnect(); } catch {}
     await updateDoc(doc(db, "rooms", roomId), {
-      "hostState.mic": !hostMic,
+      guestSeat: null,
+      "guestState.camera": false,
+      "guestState.mic": false
     });
   };
 
-  const toggleGuestCamera = async () => {
-    if (!isGuestSelf) return;
-    await updateDoc(doc(db, "rooms", roomId), {
-      "guestState.camera": !guestCamera,
-    });
-  };
-
-  const toggleGuestMic = async () => {
-    if (!isGuestSelf) return;
-    await updateDoc(doc(db, "rooms", roomId), {
-      "guestState.mic": !guestMic,
-    });
-  };
-
-
-  /* ---------------------------------------------------------
-     5) RENDER
-  ---------------------------------------------------------- */
+  /* ------------------------------------------------------------
+     5) UI
+  ------------------------------------------------------------ */
   return (
     <div className="w-full flex justify-between items-center px-6 py-4 gap-6">
 
       <CameraSlot
-        nickname={hostName}
+        nickname="Host"
         isOccupied={true}
         isSelf={isHost}
         isHost={true}
@@ -220,18 +193,22 @@ export default function CameraSection({ room, user, roomId }: any) {
         micOn={hostMic}
         remoteTrack={!isHost ? remoteHostVideo : null}
         localTrack={isHost ? localVideoTrack : null}
-        onToggleCamera={toggleHostCamera}
-        onToggleMic={toggleHostMic}
-        onLeave={async () => {
-          await updateDoc(doc(db, "rooms", roomId), {
-            "hostState.camera": false,
-          });
-        }}
+        onToggleCamera={async () =>
+          updateDoc(doc(db, "rooms", roomId), {
+            "hostState.camera": !hostCamera
+          })
+        }
+        onToggleMic={async () =>
+          updateDoc(doc(db, "rooms", roomId), {
+            "hostState.mic": !hostMic
+          })
+        }
+        onLeave={leaveAsHost}
       />
 
       {guestUid ? (
         <CameraSlot
-          nickname={guestName}
+          nickname="Misafir"
           isOccupied={true}
           isSelf={isGuestSelf}
           isHost={false}
@@ -239,13 +216,17 @@ export default function CameraSection({ room, user, roomId }: any) {
           micOn={guestMic}
           remoteTrack={!isGuestSelf ? remoteGuestVideo : null}
           localTrack={isGuestSelf ? localVideoTrack : null}
-          onToggleCamera={toggleGuestCamera}
-          onToggleMic={toggleGuestMic}
-          onLeave={async () => {
-            await updateDoc(doc(db, "rooms", roomId), {
-              "guestState.camera": false,
-            });
-          }}
+          onToggleCamera={async () =>
+            updateDoc(doc(db, "rooms", roomId), {
+              "guestState.camera": !guestCamera
+            })
+          }
+          onToggleMic={async () =>
+            updateDoc(doc(db, "rooms", roomId), {
+              "guestState.mic": !guestMic
+            })
+          }
+          onLeave={leaveAsGuest}
         />
       ) : (
         <CameraSlot nickname="Misafir Koltuğu" isOccupied={false} />
