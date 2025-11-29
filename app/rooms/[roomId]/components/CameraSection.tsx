@@ -9,7 +9,6 @@ import {
   Room,
   RemoteParticipant,
   TrackPublication,
-  createLocalTracks,
   createLocalAudioTrack,
   createLocalVideoTrack
 } from "livekit-client";
@@ -29,7 +28,7 @@ export default function CameraSection({ room, user, roomId }: any) {
   const guestCamera = room.guestState?.camera ?? false;
   const guestMic = room.guestState?.mic ?? false;
 
-  const [lkRoom, setLkRoom] = useState<any>(null);
+  const [lkRoom, setLkRoom] = useState<Room | null>(null);
 
   const [localVideoTrack, setLocalVideoTrack] = useState<any>(null);
   const [localAudioTrack, setLocalAudioTrack] = useState<any>(null);
@@ -38,16 +37,17 @@ export default function CameraSection({ room, user, roomId }: any) {
   const [remoteGuestVideo, setRemoteGuestVideo] = useState<any>(null);
 
   /* ------------------------------------------------------------
-     1) CONNECT LIVEKIT
+     1) CONNECT LIVEKIT (SADECE 1 KEZ)
   ------------------------------------------------------------ */
   useEffect(() => {
     async function connectLK() {
       if (lkRoom) return;
+      if (!currentUid) return;
 
       const resp = await fetch(
         `${process.env.NEXT_PUBLIC_LIVEKIT_TOKEN_ENDPOINT}?room=${roomId}&identity=${currentUid}`
       );
-
+      if (!resp.ok) return;
       const { token } = await resp.json();
 
       const newRoom = new Room({
@@ -56,82 +56,71 @@ export default function CameraSection({ room, user, roomId }: any) {
       });
 
       await newRoom.connect(process.env.NEXT_PUBLIC_LIVEKIT_URL!, token);
-
       setLkRoom(newRoom);
     }
 
     connectLK();
-  }, []);
+  }, [lkRoom, currentUid, roomId]);
 
   /* ------------------------------------------------------------
-     2) LOCAL TRACK LOGIC (MIC + CAMERA FINAL FIX)
+     2) LOCAL TRACK LOGIC (KAMERA / MİK → ENABLE / DISABLE)
   ------------------------------------------------------------ */
   useEffect(() => {
     if (!lkRoom) return;
 
     async function handleTracks() {
-      /* --------- VIDEO --------- */
-      if (hostCamera || guestCamera) {
-        if (!localVideoTrack) {
-          const video = await createLocalVideoTrack();
-          setLocalVideoTrack(video);
-        }
+      // Bu client ne istiyor?
+      const wantCamera = isHost ? hostCamera : isGuestSelf ? guestCamera : false;
+      const wantMic = isHost ? hostMic : isGuestSelf ? guestMic : false;
 
-        if (localVideoTrack) {
-          lkRoom.localParticipant.publishTrack(localVideoTrack);
-        }
-      } else if (localVideoTrack) {
-        lkRoom.localParticipant.unpublishTrack(localVideoTrack);
+      // --------- VIDEO (TEK TRACK, HİÇ UNPUBLISH YOK) ---------
+      if (wantCamera && !localVideoTrack) {
+        const video = await createLocalVideoTrack();
+        setLocalVideoTrack(video);
+        try {
+          await lkRoom.localParticipant.publishTrack(video);
+        } catch {}
       }
 
-      /* --------- MICROPHONE FINAL FIX --------- */
+      if (localVideoTrack?.mediaStreamTrack) {
+        // Kamera aç/kapa sadece enabled üzerinden
+        localVideoTrack.mediaStreamTrack.enabled = wantCamera;
+      }
 
-      const micOn = isHost ? hostMic : isGuestSelf ? guestMic : false;
-
-      if (micOn) {
-        // 🔥 Yeni audio track oluştur
+      // --------- AUDIO (TEK TRACK, UNPUBLISH YOK) ---------
+      if (wantMic && !localAudioTrack) {
         const audio = await createLocalAudioTrack();
-
-        // Eski track varsa kaldır
-        if (localAudioTrack) {
-          try {
-            lkRoom.localParticipant.unpublishTrack(localAudioTrack);
-            localAudioTrack.stop();
-          } catch {}
-        }
-
         setLocalAudioTrack(audio);
+        try {
+          await lkRoom.localParticipant.publishTrack(audio);
+        } catch {}
+      }
 
-        // Yeni track yayınla
-        lkRoom.localParticipant.publishTrack(audio);
-      } else {
-        // Mikrofon kapatma
-        if (localAudioTrack) {
-          try {
-            lkRoom.localParticipant.unpublishTrack(localAudioTrack);
-            localAudioTrack.stop();
-          } catch {}
-        }
-        setLocalAudioTrack(null);
+      if (localAudioTrack?.mediaStreamTrack) {
+        localAudioTrack.mediaStreamTrack.enabled = wantMic;
       }
     }
 
     handleTracks();
   }, [
     lkRoom,
+    isHost,
+    isGuestSelf,
+    hostCamera,
+    guestCamera,
     hostMic,
     guestMic,
-    hostCamera,
-    guestCamera
+    localVideoTrack,
+    localAudioTrack
   ]);
 
   /* ------------------------------------------------------------
-     3) REMOTE TRACKS
+     3) REMOTE TRACKS (HOST / MİSAFİR GÖRÜNTÜLERİ)
   ------------------------------------------------------------ */
   useEffect(() => {
     if (!lkRoom) return;
 
-    const onSub = (track: any, pub: any, participant: any) => {
+    const handleSubscribed = (track: any, pub: TrackPublication, participant: RemoteParticipant) => {
       if (track.kind === "video") {
         if (participant.identity === hostUid) setRemoteHostVideo(track);
         if (participant.identity === guestUid) setRemoteGuestVideo(track);
@@ -147,22 +136,37 @@ export default function CameraSection({ room, user, roomId }: any) {
       }
     };
 
-    lkRoom.on("trackSubscribed", onSub);
+    const handleUnsubscribed = (pub: TrackPublication, participant: RemoteParticipant) => {
+      if (pub.kind !== "video") return;
+      if (participant.identity === hostUid) setRemoteHostVideo(null);
+      if (participant.identity === guestUid) setRemoteGuestVideo(null);
+    };
 
-    lkRoom.remoteParticipants.forEach((p: any) => {
-      p.getTrackPublications().forEach((pub: any) => {
-        if (pub.isSubscribed && pub.track) onSub(pub.track, pub, p);
+    lkRoom.on("trackSubscribed", handleSubscribed);
+    lkRoom.on("trackUnsubscribed", handleUnsubscribed);
+
+    // Var olan remote participant'lar
+    lkRoom.remoteParticipants.forEach((p) => {
+      p.getTrackPublications().forEach((pub) => {
+        if (pub.isSubscribed && pub.track) {
+          handleSubscribed(pub.track, pub, p as RemoteParticipant);
+        }
       });
     });
 
-    return () => lkRoom.off("trackSubscribed", onSub);
-  }, [lkRoom]);
+    return () => {
+      lkRoom.off("trackSubscribed", handleSubscribed);
+      lkRoom.off("trackUnsubscribed", handleUnsubscribed);
+    };
+  }, [lkRoom, hostUid, guestUid]);
 
   /* ------------------------------------------------------------
-     4) LEAVE
+     4) LEAVE (SLOTTAN İNME)
   ------------------------------------------------------------ */
   const leaveAsHost = async () => {
-    try { lkRoom.disconnect(); } catch {}
+    try {
+      await lkRoom?.disconnect();
+    } catch {}
     await updateDoc(doc(db, "rooms", roomId), {
       "hostState.camera": false,
       "hostState.mic": false
@@ -170,7 +174,9 @@ export default function CameraSection({ room, user, roomId }: any) {
   };
 
   const leaveAsGuest = async () => {
-    try { lkRoom.disconnect(); } catch {}
+    try {
+      await lkRoom?.disconnect();
+    } catch {}
     await updateDoc(doc(db, "rooms", roomId), {
       guestSeat: null,
       "guestState.camera": false,
