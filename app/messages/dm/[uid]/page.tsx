@@ -51,18 +51,15 @@ export default function DirectMessagePage() {
   let typingTimeout: any = null;
 
   const inputRef = useRef<HTMLInputElement>(null);
-
-  // ⭐ EMOJI BUTTON
   const emojiButtonRef = useRef<HTMLButtonElement>(null);
 
   function openEmojiKeyboard() {
-    if (inputRef.current) {
-      inputRef.current.focus();
-      // Mobil cihazlarda emoji klavyesi açılır
-    }
+    if (inputRef.current) inputRef.current.focus();
   }
 
-  // 1) Giriş yapan kullanıcı
+  /* =====================================================================================
+     1) KULLANICI
+  ===================================================================================== */
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
       if (!u) return router.push("/login");
@@ -78,7 +75,9 @@ export default function DirectMessagePage() {
     return () => unsub();
   }, []);
 
-  // 2) Karşı kullanıcı
+  /* =====================================================================================
+     2) KARŞI KULLANICI
+  ===================================================================================== */
   useEffect(() => {
     if (!uid) return;
 
@@ -98,7 +97,9 @@ export default function DirectMessagePage() {
     load();
   }, [uid]);
 
-  // 3) Ortak ID
+  /* =====================================================================================
+     3) CONVERSATION ID
+  ===================================================================================== */
   useEffect(() => {
     if (!me || !uid) return;
 
@@ -109,7 +110,9 @@ export default function DirectMessagePage() {
     setConvId(id);
   }, [me, uid]);
 
-  // unread = 0
+  /* =====================================================================================
+     4) UNREAD = 0
+  ===================================================================================== */
   useEffect(() => {
     if (!convId || !me) return;
 
@@ -118,15 +121,15 @@ export default function DirectMessagePage() {
     setDoc(
       metaRef,
       {
-        unread: {
-          [me.uid]: 0,
-        }
+        unread: { [me.uid]: 0 }
       },
       { merge: true }
     );
   }, [convId, me]);
 
-  // Mesajları dinle
+  /* =====================================================================================
+     5) MESAJLARI ÇEK
+  ===================================================================================== */
   useEffect(() => {
     if (!convId) return;
 
@@ -143,16 +146,6 @@ export default function DirectMessagePage() {
 
       setMessages(arr);
 
-      // OKUNDU
-      if (arr.length > 0) {
-        const lastMsg = arr[arr.length - 1];
-
-        const metaRef = doc(db, "dm", convId, "meta", "info");
-        await updateDoc(metaRef, {
-          read: { [me.uid]: lastMsg.id }
-        });
-      }
-
       setTimeout(() => {
         bottomRef.current?.scrollIntoView({ behavior: "smooth" });
       }, 100);
@@ -161,7 +154,9 @@ export default function DirectMessagePage() {
     return () => unsub();
   }, [convId]);
 
-  // Typing dinle
+  /* =====================================================================================
+     6) TYPING
+  ===================================================================================== */
   useEffect(() => {
     if (!convId) return;
 
@@ -177,7 +172,6 @@ export default function DirectMessagePage() {
     return () => unsub();
   }, [convId, uid]);
 
-  // Typing gönder
   function handleTyping() {
     if (!convId || !me) return;
 
@@ -206,63 +200,44 @@ export default function DirectMessagePage() {
     );
   }
 
-  // FOTOĞRAF GÖNDER
+  /* =====================================================================================
+     FOTO GÖNDER
+  ===================================================================================== */
   async function sendImage(e: any) {
     const file = e.target.files[0];
     if (!file || !convId || !me) return;
 
     const storageRef = ref(storage, `dm/${convId}/${Date.now()}_${file.name}`);
     await uploadBytes(storageRef, file);
-
     const url = await getDownloadURL(storageRef);
 
     await addDoc(collection(db, "dm", convId, "messages"), {
       uid: me.uid,
       imgUrl: url,
-      time: serverTimestamp(),
-    });
-
-    await updateDoc(doc(db, "dm", convId, "meta", "info"), {
-      lastMsg: "[Fotoğraf]",
-      lastSender: me.uid,
-      time: serverTimestamp(),
-      unread: {
-        [uid]: (otherUser?.unreadCount ?? 0) + 1,
-        [me.uid]: 0
-      }
+      time: serverTimestamp()
     });
   }
 
-  // METİN GÖNDER
+  /* =====================================================================================
+     METİN GÖNDER
+  ===================================================================================== */
   async function sendMessage() {
     if (!newMsg.trim()) return;
     if (!me || !convId) return;
 
-    const msgRef = await addDoc(collection(db, "dm", convId, "messages"), {
+    await addDoc(collection(db, "dm", convId, "messages"), {
       uid: me.uid,
       text: newMsg,
       time: serverTimestamp(),
     });
 
-    await updateDoc(doc(db, "dm", convId, "meta", "info"), {
-      lastMsg: newMsg,
-      lastSender: me.uid,
-      time: serverTimestamp(),
-      unread: {
-        [uid]: (otherUser?.unreadCount ?? 0) + 1,
-        [me.uid]: 0
-      }
-    });
-
     setNewMsg("");
   }
 
-  // ENTER
   function handleKey(e: any) {
     if (e.key === "Enter") sendMessage();
   }
 
-  // MESAJ SİLME
   async function deleteMessage(msgId: string) {
     await deleteDoc(doc(db, "dm", convId, "messages", msgId));
   }
@@ -275,11 +250,14 @@ export default function DirectMessagePage() {
     );
   }
 
+  /* =====================================================================================
+     UI
+  ===================================================================================== */
   return (
     <div className="min-h-screen flex flex-col bg-black text-white">
 
-      {/* HEADER */}
-      <header className="w-full p-4 flex items-center gap-3 border-b border-white/10 bg-neutral-900">
+      {/* SABİT HEADER */}
+      <header className="w-full p-4 flex items-center gap-3 border-b border-white/10 bg-neutral-900 fixed top-0 left-0 right-0 z-50">
         <button onClick={() => router.back()} className="text-xl">←</button>
 
         <img
@@ -307,28 +285,8 @@ export default function DirectMessagePage() {
         </div>
       </header>
 
-      {/* AVATAR FULLSCREEN */}
-      {showAvatar && (
-        <div
-          className="fixed inset-0 bg-black/80 flex items-center justify-center z-50"
-          onClick={() => setShowAvatar(false)}
-        >
-          <img src={otherUser.avatar} className="w-64 h-64 rounded-full border-4 border-white" />
-        </div>
-      )}
-
-      {/* FOTO BÜYÜK */}
-      {imageModal && (
-        <div
-          className="fixed inset-0 bg-black/90 flex items-center justify-center z-50"
-          onClick={() => setImageModal(null)}
-        >
-          <img src={imageModal} className="max-w-[90%] max-h-[90%] rounded-lg" />
-        </div>
-      )}
-
-      {/* MESAJLAR */}
-      <div className="flex-1 p-4 overflow-y-auto">
+      {/* MESAJ ALANI */}
+      <div className="flex-1 mt-[90px] mb-[80px] p-4 overflow-y-auto">
         {messages.map((m) => {
           const mine = m.uid === me.uid;
 
@@ -341,7 +299,6 @@ export default function DirectMessagePage() {
               }}
               className={`mb-3 flex ${mine ? "justify-end" : "justify-start"}`}
             >
-
               {m.imgUrl ? (
                 <img
                   src={m.imgUrl}
@@ -359,15 +316,6 @@ export default function DirectMessagePage() {
                   }`}
                 >
                   {m.text}
-
-                  {mine && (
-                    <span className="absolute -bottom-5 right-1 text-xs">
-                      {m.id === (otherUser?.lastRead || "")
-                        ? <span className="text-blue-400">✔✔</span>
-                        : <span className="text-gray-400">✔</span>
-                      }
-                    </span>
-                  )}
                 </div>
               )}
             </div>
@@ -377,16 +325,16 @@ export default function DirectMessagePage() {
         <div ref={bottomRef}></div>
       </div>
 
-      {/* SEND BAR */}
-      <div className="border-t border-white/10 p-3 flex gap-3 bg-neutral-900">
+      {/* SABİT SEND BAR */}
+      <div className="fixed bottom-0 left-0 right-0 border-t border-white/10 p-3 bg-neutral-900 flex items-center gap-3">
 
-        {/* FOTOĞRAF */}
+        {/* FOTO BUTONU */}
         <label className="px-3 py-2 bg-white/10 border border-white/20 rounded cursor-pointer flex items-center">
           🖼️
           <input type="file" accept="image/*" className="hidden" onChange={sendImage} />
         </label>
 
-        {/* EMOJI BUTTON */}
+        {/* EMOJI BUTONU */}
         <button
           ref={emojiButtonRef}
           onClick={openEmojiKeyboard}
@@ -395,7 +343,7 @@ export default function DirectMessagePage() {
           😊
         </button>
 
-        {/* MESAJ INPUT */}
+        {/* INPUT */}
         <input
           ref={inputRef}
           value={newMsg}
@@ -408,11 +356,35 @@ export default function DirectMessagePage() {
           className="flex-1 p-2 rounded bg-white/10 border border-white/20"
         />
 
-        <button onClick={sendMessage} className="px-4 py-2 bg-blue-600 rounded">
+        {/* GÖNDER */}
+        <button
+          onClick={sendMessage}
+          className="px-4 py-2 bg-blue-600 rounded whitespace-nowrap"
+        >
           Gönder
         </button>
 
       </div>
+
+      {/* AVATAR FULLSCREEN */}
+      {showAvatar && (
+        <div
+          className="fixed inset-0 bg-black/80 flex items-center justify-center z-50"
+          onClick={() => setShowAvatar(false)}
+        >
+          <img src={otherUser.avatar} className="w-64 h-64 rounded-full border-4 border-white" />
+        </div>
+      )}
+
+      {/* FOTO MODAL */}
+      {imageModal && (
+        <div
+          className="fixed inset-0 bg-black/90 flex items-center justify-center z-50"
+          onClick={() => setImageModal(null)}
+        >
+          <img src={imageModal} className="max-w-[90%] max-h-[90%] rounded-lg" />
+        </div>
+      )}
 
     </div>
   );

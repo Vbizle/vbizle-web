@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import CameraSlot from "./CameraSlot";
 import { db } from "@/firebase/firebaseConfig";
-import { doc, updateDoc } from "firebase/firestore";
+import { doc, getDoc, updateDoc } from "firebase/firestore";
 
 import {
   Room,
@@ -22,6 +22,44 @@ export default function CameraSection({ room, user, roomId }: any) {
   const isHost = currentUid === hostUid;
   const isGuestSelf = currentUid === guestUid;
 
+  /* ------------------------------------------------------------------
+     ⭐ 1) USER PROFİLLERİNİ OTOMATİK ÇEK → hostName / guestName fallback
+  ------------------------------------------------------------------ */
+  const [hostProfile, setHostProfile] = useState<any>(null);
+  const [guestProfile, setGuestProfile] = useState<any>(null);
+
+  useEffect(() => {
+    async function loadProfiles() {
+      // HOST PROFİLİ
+      if (hostUid) {
+        const snap = await getDoc(doc(db, "users", hostUid));
+        if (snap.exists()) {
+          setHostProfile(snap.data());
+        }
+      }
+
+      // GUEST PROFİLİ
+      if (guestUid) {
+        const snap = await getDoc(doc(db, "users", guestUid));
+        if (snap.exists()) {
+          setGuestProfile(snap.data());
+        }
+      }
+    }
+
+    loadProfiles();
+  }, [hostUid, guestUid]);
+
+  // Eğer Firestore oda içinde yoksa bile fallback yap
+  const hostName = room.hostName || hostProfile?.username || "Host";
+  const guestName = room.guestName || guestProfile?.username || "Misafir";
+
+  const hostAvatar = room.hostAvatar || hostProfile?.avatar || null;
+  const guestAvatar = room.guestAvatar || guestProfile?.avatar || null;
+
+  /* ------------------------------------------------------------------
+     STATE
+  ------------------------------------------------------------------ */
   const hostCamera = room.hostState?.camera ?? false;
   const hostMic = room.hostState?.mic ?? false;
 
@@ -36,9 +74,9 @@ export default function CameraSection({ room, user, roomId }: any) {
   const [remoteHostVideo, setRemoteHostVideo] = useState<any>(null);
   const [remoteGuestVideo, setRemoteGuestVideo] = useState<any>(null);
 
-  /* ------------------------------------------------------------
-     1) CONNECT LIVEKIT (SADECE 1 KEZ)
-  ------------------------------------------------------------ */
+  /* ------------------------------------------------------------------
+     2) CONNECT LIVEKIT
+  ------------------------------------------------------------------ */
   useEffect(() => {
     async function connectLK() {
       if (lkRoom) return;
@@ -62,18 +100,17 @@ export default function CameraSection({ room, user, roomId }: any) {
     connectLK();
   }, [lkRoom, currentUid, roomId]);
 
-  /* ------------------------------------------------------------
-     2) LOCAL TRACK LOGIC (KAMERA / MİK → ENABLE / DISABLE)
-  ------------------------------------------------------------ */
+  /* ------------------------------------------------------------------
+     3) LOCAL TRACKS
+  ------------------------------------------------------------------ */
   useEffect(() => {
     if (!lkRoom) return;
 
     async function handleTracks() {
-      // Bu client ne istiyor?
       const wantCamera = isHost ? hostCamera : isGuestSelf ? guestCamera : false;
       const wantMic = isHost ? hostMic : isGuestSelf ? guestMic : false;
 
-      // --------- VIDEO (TEK TRACK, HİÇ UNPUBLISH YOK) ---------
+      // VIDEO
       if (wantCamera && !localVideoTrack) {
         const video = await createLocalVideoTrack();
         setLocalVideoTrack(video);
@@ -83,11 +120,10 @@ export default function CameraSection({ room, user, roomId }: any) {
       }
 
       if (localVideoTrack?.mediaStreamTrack) {
-        // Kamera aç/kapa sadece enabled üzerinden
         localVideoTrack.mediaStreamTrack.enabled = wantCamera;
       }
 
-      // --------- AUDIO (TEK TRACK, UNPUBLISH YOK) ---------
+      // AUDIO
       if (wantMic && !localAudioTrack) {
         const audio = await createLocalAudioTrack();
         setLocalAudioTrack(audio);
@@ -114,9 +150,9 @@ export default function CameraSection({ room, user, roomId }: any) {
     localAudioTrack
   ]);
 
-  /* ------------------------------------------------------------
-     3) REMOTE TRACKS (HOST / MİSAFİR GÖRÜNTÜLERİ)
-  ------------------------------------------------------------ */
+  /* ------------------------------------------------------------------
+     4) REMOTE TRACKS
+  ------------------------------------------------------------------ */
   useEffect(() => {
     if (!lkRoom) return;
 
@@ -145,7 +181,6 @@ export default function CameraSection({ room, user, roomId }: any) {
     lkRoom.on("trackSubscribed", handleSubscribed);
     lkRoom.on("trackUnsubscribed", handleUnsubscribed);
 
-    // Var olan remote participant'lar
     lkRoom.remoteParticipants.forEach((p) => {
       p.getTrackPublications().forEach((pub) => {
         if (pub.isSubscribed && pub.track) {
@@ -160,13 +195,11 @@ export default function CameraSection({ room, user, roomId }: any) {
     };
   }, [lkRoom, hostUid, guestUid]);
 
-  /* ------------------------------------------------------------
-     4) LEAVE (SLOTTAN İNME)
-  ------------------------------------------------------------ */
+  /* ------------------------------------------------------------------
+     5) LEAVE
+  ------------------------------------------------------------------ */
   const leaveAsHost = async () => {
-    try {
-      await lkRoom?.disconnect();
-    } catch {}
+    try { await lkRoom?.disconnect(); } catch {}
     await updateDoc(doc(db, "rooms", roomId), {
       "hostState.camera": false,
       "hostState.mic": false
@@ -174,9 +207,7 @@ export default function CameraSection({ room, user, roomId }: any) {
   };
 
   const leaveAsGuest = async () => {
-    try {
-      await lkRoom?.disconnect();
-    } catch {}
+    try { await lkRoom?.disconnect(); } catch {}
     await updateDoc(doc(db, "rooms", roomId), {
       guestSeat: null,
       "guestState.camera": false,
@@ -184,14 +215,17 @@ export default function CameraSection({ room, user, roomId }: any) {
     });
   };
 
-  /* ------------------------------------------------------------
-     5) UI
-  ------------------------------------------------------------ */
+  /* ------------------------------------------------------------------
+     6) UI
+  ------------------------------------------------------------------ */
   return (
     <div className="w-full flex justify-between items-center px-6 py-4 gap-6">
 
+      {/* HOST SLOT */}
       <CameraSlot
-        nickname="Host"
+        nickname={hostName}
+        avatar={hostAvatar}
+        seatNumber={1}
         isOccupied={true}
         isSelf={isHost}
         isHost={true}
@@ -200,21 +234,20 @@ export default function CameraSection({ room, user, roomId }: any) {
         remoteTrack={!isHost ? remoteHostVideo : null}
         localTrack={isHost ? localVideoTrack : null}
         onToggleCamera={async () =>
-          updateDoc(doc(db, "rooms", roomId), {
-            "hostState.camera": !hostCamera
-          })
+          updateDoc(doc(db, "rooms", roomId), { "hostState.camera": !hostCamera })
         }
         onToggleMic={async () =>
-          updateDoc(doc(db, "rooms", roomId), {
-            "hostState.mic": !hostMic
-          })
+          updateDoc(doc(db, "rooms", roomId), { "hostState.mic": !hostMic })
         }
         onLeave={leaveAsHost}
       />
 
+      {/* GUEST SLOT */}
       {guestUid ? (
         <CameraSlot
-          nickname="Misafir"
+          nickname={guestName}
+          avatar={guestAvatar}
+          seatNumber={2}
           isOccupied={true}
           isSelf={isGuestSelf}
           isHost={false}
@@ -223,19 +256,24 @@ export default function CameraSection({ room, user, roomId }: any) {
           remoteTrack={!isGuestSelf ? remoteGuestVideo : null}
           localTrack={isGuestSelf ? localVideoTrack : null}
           onToggleCamera={async () =>
-            updateDoc(doc(db, "rooms", roomId), {
-              "guestState.camera": !guestCamera
-            })
+            updateDoc(doc(db, "rooms", roomId), { "guestState.camera": !guestCamera })
           }
           onToggleMic={async () =>
-            updateDoc(doc(db, "rooms", roomId), {
-              "guestState.mic": !guestMic
-            })
+            updateDoc(doc(db, "rooms", roomId), { "guestState.mic": !guestMic })
           }
           onLeave={leaveAsGuest}
         />
       ) : (
-        <CameraSlot nickname="Misafir Koltuğu" isOccupied={false} />
+        <CameraSlot
+          nickname={"Boş"}
+          seatNumber={2}
+          avatar={null}
+          isOccupied={false}
+          isSelf={false}
+          isHost={false}
+          cameraOn={false}
+          micOn={false}
+        />
       )}
     </div>
   );

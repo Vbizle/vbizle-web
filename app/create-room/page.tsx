@@ -28,9 +28,6 @@ export default function CreateRoomPage() {
   const [preview, setPreview] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // ---------------------------------------------------
-  // 🔥 Kullanıcının users/{uid} dokümanı yoksa oluştur
-  // ---------------------------------------------------
   useEffect(() => {
     if (!user) return;
 
@@ -50,9 +47,6 @@ export default function CreateRoomPage() {
     ensureUserDoc();
   }, [user]);
 
-  // ---------------------------------------------------
-  // 🔥 Dosya seçme
-  // ---------------------------------------------------
   async function handleSelectFile(e: any) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -60,9 +54,6 @@ export default function CreateRoomPage() {
     setPreview(URL.createObjectURL(file));
   }
 
-  // ---------------------------------------------------
-  // 🔥 ODAYI OLUŞTUR (SES + YOUTUBE DESTEKLİ FİNAL)
-  // ---------------------------------------------------
   async function handleCreateRoom(e: any) {
     e.preventDefault();
     if (!roomName) return alert("Oda ismi gerekli!");
@@ -70,7 +61,6 @@ export default function CreateRoomPage() {
     setLoading(true);
 
     try {
-      // 🔍 Kullanıcının zaten odası var mı?
       const check = query(
         collection(db, "rooms"),
         where("ownerId", "==", user!.uid)
@@ -79,11 +69,10 @@ export default function CreateRoomPage() {
 
       if (!exists.empty) {
         const roomId = exists.docs[0].id;
-        alert("Zaten bir odanız var. Odaya yönlendiriliyorsunuz.");
+        alert("Zaten bir odanız var.");
         return router.push(`/rooms/${roomId}`);
       }
 
-      // 🔥 Fotoğraf yükleme
       let imageUrl = "";
       if (imageFile) {
         const storageRef = ref(storage, `roomImages/${user!.uid}/${Date.now()}.jpg`);
@@ -91,9 +80,13 @@ export default function CreateRoomPage() {
         imageUrl = await getDownloadURL(storageRef);
       }
 
-      // ---------------------------------------------------
-      // 🔥 ODA FIRESTORE — YENİ SES ALANLARI EKLENDİ
-      // ---------------------------------------------------
+      // 🔥 Host bilgilerini Firestore'dan çek
+      const uref = doc(db, "users", user!.uid);
+      const userSnap = await getDoc(uref);
+
+      const hostName = userSnap.exists() ? userSnap.data().username : "Host";
+      const hostAvatar = userSnap.exists() ? userSnap.data().avatar : "/user.png";
+
       const roomRef = await addDoc(collection(db, "rooms"), {
         name: roomName,
         image: imageUrl,
@@ -102,19 +95,21 @@ export default function CreateRoomPage() {
         onlineUsers: [user!.uid],
         onlineCount: 1,
 
-        // 📌 YouTube senkronizasyon alanları
         videoId: "",
         isPlaying: false,
         currentTime: 0,
         lastUpdate: Date.now(),
-
-        // 📌 🔥 Ses kontrolü (host video sesi)
         videoVolume: 100,
 
-        // 📌 Kamera state
         hostState: { camera: false, mic: false },
         guestState: { camera: false, mic: false },
         guestSeat: null,
+
+        // ⭐ SLOT İÇİN CRITICAL ALANLAR
+        hostName,
+        hostAvatar,
+        guestName: null,
+        guestAvatar: null,
 
         createdAt: Date.now(),
       });
@@ -123,7 +118,6 @@ export default function CreateRoomPage() {
 
     } catch (err) {
       console.error("Room error:", err);
-      alert("Oda oluşturulurken hata oluştu");
     }
 
     setLoading(false);
@@ -139,7 +133,6 @@ export default function CreateRoomPage() {
 
   return (
     <div className="max-w-lg mx-auto py-10">
-
       <h1 className="text-3xl font-bold mb-8">Oda Oluştur</h1>
 
       <form onSubmit={handleCreateRoom} className="flex flex-col gap-6">
@@ -171,7 +164,6 @@ export default function CreateRoomPage() {
         </button>
 
       </form>
-
     </div>
   );
 }

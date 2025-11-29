@@ -9,7 +9,7 @@ export function useYoutubePlayer(
   user: any,
   roomId: string,
   containerRef: any,
-  setYtReady?: (v: boolean) => void   // ⭐ Kamera için YT hazır callback
+  setYtReady?: (v: boolean) => void
 ) {
   const playerRef = useRef<any>(null);
   const [apiReady, setApiReady] = useState(false);
@@ -18,7 +18,7 @@ export function useYoutubePlayer(
   const isHost = user?.uid === room?.ownerId;
 
   /* ------------------------------------------------
-     1) API LOAD — MOBILE + RENDER SAFE
+     1) API LOAD — MOBILE + SAFE
   ------------------------------------------------ */
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -46,7 +46,7 @@ export function useYoutubePlayer(
   }, []);
 
   /* ------------------------------------------------
-     2) PLAYER INIT — AUTOPLAY + TWA FIXED
+     2) PLAYER INIT — AUTOPLAY + TWA + SOUND BAR FIX
   ------------------------------------------------ */
   useEffect(() => {
     if (!apiReady) return;
@@ -68,15 +68,20 @@ export function useYoutubePlayer(
         playsinline: 1,
         modestbranding: 1,
         rel: 0,
-        controls: isHost ? 1 : 0,
+
+        /* ---------------------------------------------
+           🔥 Ses çubuğunun görünmesini sağlayan tek seçenek
+        ---------------------------------------------- */
+        controls: isHost ? 2 : 0,
+
         disablekb: isHost ? 0 : 1,
-        mute: 1, 
+        mute: 1,
       },
 
       events: {
         onReady: () => {
           setPlayerReady(true);
-          setYtReady?.(true);  // ⭐ Kamera için YT hazır sinyali
+          setYtReady?.(true);
 
           try {
             if (room.videoTime) {
@@ -85,39 +90,44 @@ export function useYoutubePlayer(
 
             playerRef.current.playVideo?.();
 
-            /* ------------------------------------------------
-               🔥 MİSAFİR OTOMATİK UNMUTE — TWA FIX
-            ------------------------------------------------ */
+            /* ---------------------------------------------
+               ✔ Host → Android WebView’da ses çubuğu kilidini aç
+            ---------------------------------------------- */
+            if (isHost) {
+              try {
+                const iframe = playerRef.current.getIframe();
+                iframe.style.pointerEvents = "auto"; // SES KONTROLÜ GÖRÜNÜR
+              } catch {}
+            }
+
+            /* ---------------------------------------------
+               🔥 Misafir otomatik ses açma
+            ---------------------------------------------- */
             if (!isHost) {
               setTimeout(() => {
                 try {
                   playerRef.current.playVideo?.();
                   playerRef.current.unMute?.();
                   playerRef.current.setVolume(100);
-                  playerRef.current.unMute?.();
-                } catch (e) {
-                  console.log("guest unmute error", e);
-                }
+                } catch {}
               }, 350);
             }
 
-            /* ------------------------------------------------
-               🔥 HOST — Volume sync
-            ------------------------------------------------ */
+            /* ---------------------------------------------
+               🔥 Host Volume Sync
+            ---------------------------------------------- */
             if (isHost) {
               playerRef.current.unMute?.();
               playerRef.current.setVolume(room.videoVolume ?? 100);
             }
-
-          } catch (err) {
-            console.log("YT Ready err:", err);
-          }
+          } catch {}
         },
 
         onStateChange: async (e: any) => {
           if (!isHost) return;
 
           const st = e.data;
+
           if (st === 1 || st === 2) {
             let cur = 0;
 
@@ -131,14 +141,13 @@ export function useYoutubePlayer(
               lastUpdate: serverTimestamp(),
             });
           }
-        }
-      }
+        },
+      },
     });
-
   }, [apiReady, room?.youtube]);
 
   /* ------------------------------------------------
-     3) HOST → VOLUME SYNC FIX
+     3) HOST → VOLUME SYNC
   ------------------------------------------------ */
   useEffect(() => {
     if (!playerReady) return;
@@ -169,7 +178,7 @@ export function useYoutubePlayer(
   }, [playerReady, room.videoVolume]);
 
   /* ------------------------------------------------
-     5) GUEST SYNC SEEK + PLAY/PAUSE FIX
+     5) GUEST SYNC SEEK + PLAY/PAUSE
   ------------------------------------------------ */
   useEffect(() => {
     if (!playerReady) return;
@@ -179,8 +188,7 @@ export function useYoutubePlayer(
     const last = room.lastUpdate;
 
     if (room.playerState === 1 && last?.toMillis) {
-      const diff = (Date.now() - last.toMillis()) / 1000;
-      target += diff;
+      target += (Date.now() - last.toMillis()) / 1000;
     }
 
     try {
@@ -189,12 +197,9 @@ export function useYoutubePlayer(
         playerRef.current.seekTo(target, true);
       }
 
-      if (room.playerState === 1) {
-        playerRef.current.playVideo();
-      } else {
-        playerRef.current.pauseVideo();
-      }
-
+      room.playerState === 1
+        ? playerRef.current.playVideo()
+        : playerRef.current.pauseVideo();
     } catch {}
   }, [playerReady, room.playerState, room.videoTime, room.lastUpdate]);
 }
