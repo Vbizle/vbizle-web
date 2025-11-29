@@ -90,7 +90,7 @@ export default function CameraSlot({
         className="
           relative
           w-[130px] h-[130px]
-          rounded-full
+          rounded-xl               /* 🔥 Kare + hafif oval */
           bg-white/5
           border border-white/20
           overflow-hidden
@@ -123,7 +123,7 @@ export default function CameraSlot({
               <img
                 src={avatar}
                 alt="avatar"
-                className="w-full h-full object-cover"
+                className="w-full h-full object-cover rounded-xl"
               />
             ) : (
               <p className="text-white/60 text-xs">Kamera Kapalı</p>
@@ -135,11 +135,14 @@ export default function CameraSlot({
             SELF CONTROLS
         ------------------------------------------------------- */}
         {isOccupied && isSelf && showControls && (
-          <div className="
-            absolute inset-0
-            bg-black/60 backdrop-blur-sm
-            flex items-center justify-center gap-3 z-20
-          ">
+          <div
+            className="
+              absolute inset-0
+              bg-black/60 backdrop-blur-sm
+              flex items-center justify-center gap-3 z-20
+            "
+          >
+
             <button
               className="w-9 h-9 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center text-lg"
               onClick={(e) => {
@@ -169,6 +172,7 @@ export default function CameraSlot({
             >
               ⏹
             </button>
+
           </div>
         )}
 

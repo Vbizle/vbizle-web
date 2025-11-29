@@ -1,9 +1,10 @@
 "use client";
 
+import { useState, useEffect } from "react";   // 🔥 EKLENDİ
 import { useRouter } from "next/navigation";
 import { auth, db } from "@/firebase/firebaseConfig";
 import { useRoomState } from "@/app/providers/RoomProvider";
-import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { doc, updateDoc, serverTimestamp, getDoc } from "firebase/firestore";
 
 interface Props {
   user: {
@@ -26,38 +27,86 @@ export default function ProfilePopup({ user, onClose, isOwner }: Props) {
   const isSelf = currentUid === user.uid;
   const userPhoto = user.photo || user.avatar || "/user.png";
 
-  // 🔥 DM’ye geçmeden önce odayı minimize et
+  /* ---------------------------------------------------------------
+     🔥 ODA BİLGİLERİNİ ANLIK OKU (slot kontrol için)
+  --------------------------------------------------------------- */
+  const roomId =
+    typeof window !== "undefined"
+      ? window.location.pathname.split("/").pop()
+      : null;
+
+  const [roomData, setRoomData] = useState<any>(null);
+
+  useEffect(() => {
+    if (!roomId) return;
+
+    getDoc(doc(db, "rooms", roomId)).then((s) => {
+      if (s.exists()) setRoomData(s.data());
+    });
+  }, [roomId]);
+
+  // henüz oda yüklenmediyse
+  if (!roomData) return null;
+
+  /* ---------------------------------------------------------------
+     🔥 SLOT DURUMLARI
+  --------------------------------------------------------------- */
+
+  const cameraSeat = roomData.guestSeat || "";
+  const audio1 = roomData.audioSeat1?.uid || "";
+  const audio2 = roomData.audioSeat2?.uid || "";
+
+  const cameraFull = !!cameraSeat;
+  const audioFull = audio1 && audio2;
+
+  // Kullanıcı zaten bir slotta mı?
+  const userInCamera = cameraSeat === user.uid;
+  const userInAudio = audio1 === user.uid || audio2 === user.uid;
+
+  // Kullanıcı zaten bir slotta → tekrar davet gönderilemez
+  const userOccupied = userInCamera || userInAudio;
+
+  /* --------------------------------------------
+     DM ÖNCESİ ODAYI KÜÇÜLT
+  -------------------------------------------- */
   const handleSendDM = () => {
     try {
-      const roomId = window.location.pathname.split("/").pop();
-
       minimizeRoom({
         roomId,
         roomImage: userPhoto,
       });
 
       router.push(`/messages/dm/${user.uid}`);
-
       onClose();
     } catch (err) {
       console.error("Minimize/DM error:", err);
     }
   };
 
-  // 🔥 1. ADIM: Kameraya davet Firestore'a yazılır
+  /* --------------------------------------------
+     KAMERA DAVETİ
+  -------------------------------------------- */
   const handleCameraInvite = async () => {
-    try {
-      const roomId = window.location.pathname.split("/").pop();
-      if (!roomId) return;
+    if (cameraFull) {
+      alert("❌ Kamera koltuğu dolu!");
+      return;
+    }
 
+    if (userOccupied) {
+      alert("❌ Bu kullanıcı zaten bir slota sahip!");
+      return;
+    }
+
+    try {
       await updateDoc(doc(db, "rooms", roomId), {
         invite: {
           toUid: user.uid,
           fromUid: currentUid ?? null,
           username: user.name,
           avatar: userPhoto,
-          status: "pending", // pending | accepted | rejected
+          status: "pending",
           createdAt: serverTimestamp(),
+          type: "camera",
         },
       });
 
@@ -68,6 +117,42 @@ export default function ProfilePopup({ user, onClose, isOwner }: Props) {
     }
   };
 
+  /* --------------------------------------------
+     SES DAVETİ
+  -------------------------------------------- */
+  const handleAudioInvite = async () => {
+    if (audioFull) {
+      alert("❌ Tüm ses koltukları dolu!");
+      return;
+    }
+
+    if (userOccupied) {
+      alert("❌ Bu kullanıcı zaten bir slota sahip!");
+      return;
+    }
+
+    try {
+      await updateDoc(doc(db, "rooms", roomId), {
+        audioInvite: {
+          toUid: user.uid,
+          fromUid: currentUid ?? null,
+          username: user.name,
+          avatar: userPhoto,
+          status: "pending",
+          createdAt: serverTimestamp(),
+        },
+      });
+
+      alert("🔊 Sese davet gönderildi!");
+      onClose();
+    } catch (err) {
+      console.error("Audio invite error:", err);
+    }
+  };
+
+  /* --------------------------------------------
+     RENDER
+  -------------------------------------------- */
   return (
     <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/60 backdrop-blur-sm">
       <div className="bg-neutral-900 rounded-2xl w-80 p-5 border border-white/10 shadow-xl text-center">
@@ -79,17 +164,38 @@ export default function ProfilePopup({ user, onClose, isOwner }: Props) {
         <h3 className="text-xl font-semibold mb-1">{user.name}</h3>
 
         <div className="flex flex-col gap-3 mt-4">
-          {/* Sadece oda sahibi ve kendisi olmayan kullanıcıya davet */}
+          {/* OWNER → Başkasına davet butonları */}
           {isOwner && !isSelf && (
-            <button
-              className="w-full py-2 rounded-lg bg-purple-600 hover:bg-purple-700 transition"
-              onClick={handleCameraInvite}
-            >
-              Kameraya Davet
-            </button>
+            <>
+              {/* Kamera Daveti */}
+              <button
+                disabled={cameraFull || userOccupied}
+                className={`w-full py-2 rounded-lg transition ${
+                  cameraFull || userOccupied
+                    ? "bg-gray-600 cursor-not-allowed"
+                    : "bg-purple-600 hover:bg-purple-700"
+                }`}
+                onClick={handleCameraInvite}
+              >
+                Kameraya Davet
+              </button>
+
+              {/* Ses Daveti */}
+              <button
+                disabled={audioFull || userOccupied}
+                className={`w-full py-2 rounded-lg transition ${
+                  audioFull || userOccupied
+                    ? "bg-gray-600 cursor-not-allowed"
+                    : "bg-yellow-600 hover:bg-yellow-700"
+                }`}
+                onClick={handleAudioInvite}
+              >
+                🔊 Sese Davet
+              </button>
+            </>
           )}
 
-          {/* DM butonu (kendine gönderemez) */}
+          {/* DM */}
           {!isSelf && (
             <button
               onClick={handleSendDM}

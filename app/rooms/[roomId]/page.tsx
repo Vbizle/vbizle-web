@@ -22,7 +22,11 @@ import ChatInput from "./components/ChatInput";
 import CameraSection from "./components/CameraSection";
 import ProfilePopup from "./components/ProfilePopup";
 
+// 🔥 Kamera Daveti popup (eski)
 import CameraInvite from "./components/CameraInvite";
+
+// 🔥 Yeni Ses Daveti popup
+import AudioInvite from "./components/AudioInvite";
 
 import { useRoomState } from "@/app/providers/RoomProvider";
 
@@ -34,16 +38,10 @@ export default function RoomPage() {
     return isMinimized && minimizedRoom?.roomId === roomId;
   }, [isMinimized, minimizedRoom, roomId]);
 
-  useEffect(() => {
-    if (!isMinimized) {
-      console.log("🔥 Minimize modundan çıkıldı → presence aktif!");
-    }
-  }, [isMinimized]);
-
-  /** Kullanıcı Profili */
+  /** Profiller */
   const { user, profile, loadingProfile } = useUserProfile();
 
-  /** Oda Bilgisi */
+  /** Oda */
   const { room, loadingRoom } = useRoomData(roomId as string);
 
   /** Chat */
@@ -74,37 +72,45 @@ export default function RoomPage() {
     saving,
   } = useRoomSettings(roomId as string, room, user);
 
-  /** Presence + Join */
+  /** Presence */
   useRoomPresence(roomId as string, user, profile, disablePresence);
   useJoinMessage(roomId as string, user, profile, disablePresence);
 
-  /** UI States */
+  /** UI State */
   const [showOnline, setShowOnline] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
   const [profilePopup, setProfilePopup] = useState<any>(null);
 
-  /** Kamera daveti */
-  const [invitePopup, setInvitePopup] = useState<any>(null);
+  /** Kamera & Ses daveti popup'ları ayrı ayrı */
+  const [cameraInvitePopup, setCameraInvitePopup] = useState(null);
+  const [audioInvitePopup, setAudioInvitePopup] = useState(null);
 
+  /** Kamera & Ses davetlerini dinle */
   useEffect(() => {
     if (!room || !user) return;
 
-    const inv = room.invite;
-    if (!inv) return;
-
-    if (inv.toUid === user.uid && inv.status === "pending") {
-      setInvitePopup(inv);
+    // 🎥 Kamera daveti
+    if (
+      room.invite &&
+      room.invite.toUid === user.uid &&
+      room.invite.status === "pending"
+    ) {
+      setCameraInvitePopup(room.invite);
     }
-  }, [room?.invite, user]);
 
+    // 🎤 Ses daveti
+    if (
+      room.audioInvite &&
+      room.audioInvite.toUid === user.uid &&
+      room.audioInvite.status === "pending"
+    ) {
+      setAudioInvitePopup(room.audioInvite);
+    }
+  }, [room?.invite, room?.audioInvite, user]);
 
-  /** ----------------------------------------------------
-   *  YENİ KORUMA BLOĞU — BEYAZ EKRAN VE YT CRASH FIX
-   ---------------------------------------------------- */
-  if (typeof window === "undefined") {
-    return null; // SSR sırasında hiçbir şey render etme
-  }
+  /** SSR Crash Fix */
+  if (typeof window === "undefined") return null;
 
   if (loadingRoom || loadingProfile) {
     return (
@@ -121,8 +127,6 @@ export default function RoomPage() {
       </div>
     );
   }
-  /** ---------------------------------------------------- */
-
 
   return (
     <div className="h-screen bg-black text-white flex flex-col overflow-hidden">
@@ -138,13 +142,12 @@ export default function RoomPage() {
           onEditClick={() => setShowEdit(true)}
         />
 
-        {/* 🔥 YouTube + Camera sadece room kesin hazırken render edilir */}
+        {/* YouTube + Kamera */}
         <YoutubeSection room={room} user={user} roomId={roomId as string} />
-
         <CameraSection room={room} user={user} roomId={roomId as string} />
       </div>
 
-      {/* ALT BLOK → CHAT */}
+      {/* CHAT */}
       <div className="flex-1 flex flex-col overflow-hidden">
         <div className="flex-1 min-h-0 overflow-hidden">
           <ChatSection
@@ -190,6 +193,7 @@ export default function RoomPage() {
         onClose={() => setShowSearch(false)}
       />
 
+      {/* Profil popup */}
       {profilePopup && (
         <ProfilePopup
           user={profilePopup}
@@ -198,14 +202,26 @@ export default function RoomPage() {
         />
       )}
 
-      {invitePopup && (
+      {/* 🎥 Kamera Daveti Popup */}
+      {cameraInvitePopup && (
         <CameraInvite
-          invite={invitePopup}
+          invite={cameraInvitePopup}
           roomId={roomId as string}
           user={user}
-          onClose={() => setInvitePopup(null)}
+          onClose={() => setCameraInvitePopup(null)}
         />
       )}
+
+      {/* 🎤 Ses Daveti Popup */}
+      {audioInvitePopup && (
+        <AudioInvite
+          invite={audioInvitePopup}
+          roomId={roomId as string}
+          user={user}
+          onClose={() => setAudioInvitePopup(null)}
+        />
+      )}
+
     </div>
   );
 }
