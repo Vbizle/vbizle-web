@@ -17,12 +17,9 @@ export function useYoutubePlayer(
 
   const isHost = user?.uid === room?.ownerId;
 
-  /* ------------------------------------------------
-     1) API LOAD — MOBILE + SAFE
-  ------------------------------------------------ */
+  /* API LOAD */
   useEffect(() => {
     if (typeof window === "undefined") return;
-
     if (window.YT && window.YT.Player) {
       setApiReady(true);
       return;
@@ -40,14 +37,12 @@ export function useYoutubePlayer(
         clearInterval(interval);
         setApiReady(true);
       }
-    }, 250);
+    }, 200);
 
     return () => clearInterval(interval);
   }, []);
 
-  /* ------------------------------------------------
-     2) PLAYER INIT — AUTOPLAY + TWA + SOUND BAR FIX
-  ------------------------------------------------ */
+  /* PLAYER INIT */
   useEffect(() => {
     if (!apiReady) return;
     if (!room?.youtube) return;
@@ -62,19 +57,16 @@ export function useYoutubePlayer(
 
     playerRef.current = new window.YT.Player(el, {
       videoId: room.youtube,
-
       playerVars: {
         autoplay: 1,
         playsinline: 1,
-        modestbranding: 1,
         rel: 0,
+        modestbranding: 1,
 
-        /* ---------------------------------------------
-           🔥 Ses çubuğunun görünmesini sağlayan tek seçenek
-        ---------------------------------------------- */
-        controls: isHost ? 2 : 0,
+        /* 🔥 Timeline geri geldi — ama sadece host görüyor */
+        controls: isHost ? 1 : 0,
 
-        disablekb: isHost ? 0 : 1,
+        /* ÖNEMLİ — YouTube'un kendi ses barı yine çalışmıyor */
         mute: 1,
       },
 
@@ -83,46 +75,26 @@ export function useYoutubePlayer(
           setPlayerReady(true);
           setYtReady?.(true);
 
-          try {
-            if (room.videoTime) {
-              playerRef.current.seekTo(room.videoTime, true);
-            }
+          playerRef.current.playVideo?.();
+          playerRef.current.unMute?.();
 
-            playerRef.current.playVideo?.();
+          /* HOST */
+          if (isHost) {
+            playerRef.current.setVolume(room.videoVolume ?? 100);
+          }
 
-            /* ---------------------------------------------
-               ✔ Host → Android WebView’da ses çubuğu kilidini aç
-            ---------------------------------------------- */
-            if (isHost) {
+          /* MİSAFİR */
+          if (!isHost) {
+            setTimeout(() => {
               try {
-                const iframe = playerRef.current.getIframe();
-                iframe.style.pointerEvents = "auto"; // SES KONTROLÜ GÖRÜNÜR
+                playerRef.current.setVolume(room.videoVolume ?? 100);
+                playerRef.current.unMute?.();
               } catch {}
-            }
-
-            /* ---------------------------------------------
-               🔥 Misafir otomatik ses açma
-            ---------------------------------------------- */
-            if (!isHost) {
-              setTimeout(() => {
-                try {
-                  playerRef.current.playVideo?.();
-                  playerRef.current.unMute?.();
-                  playerRef.current.setVolume(100);
-                } catch {}
-              }, 350);
-            }
-
-            /* ---------------------------------------------
-               🔥 Host Volume Sync
-            ---------------------------------------------- */
-            if (isHost) {
-              playerRef.current.unMute?.();
-              playerRef.current.setVolume(room.videoVolume ?? 100);
-            }
-          } catch {}
+            }, 200);
+          }
         },
 
+        /* HOST timeline hareketi → tüm odaya sync */
         onStateChange: async (e: any) => {
           if (!isHost) return;
 
@@ -130,10 +102,7 @@ export function useYoutubePlayer(
 
           if (st === 1 || st === 2) {
             let cur = 0;
-
-            try {
-              cur = playerRef.current.getCurrentTime();
-            } catch {}
+            try { cur = playerRef.current.getCurrentTime(); } catch {}
 
             await updateDoc(doc(db, "rooms", roomId), {
               playerState: st,
@@ -141,54 +110,41 @@ export function useYoutubePlayer(
               lastUpdate: serverTimestamp(),
             });
           }
-        },
-      },
+        }
+      }
     });
   }, [apiReady, room?.youtube]);
 
-  /* ------------------------------------------------
-     3) HOST → VOLUME SYNC
-  ------------------------------------------------ */
+  /* HOST CUSTOM VOLUME SYNC */
   useEffect(() => {
     if (!playerReady) return;
     if (!isHost) return;
 
-    const interval = setInterval(async () => {
-      if (!playerRef.current) return;
-
-      const vol = playerRef.current.getVolume?.();
-      if (vol != null && vol !== room.videoVolume) {
-        await updateDoc(doc(db, "rooms", roomId), { videoVolume: vol });
-      }
-    }, 300);
-
-    return () => clearInterval(interval);
+    try {
+      playerRef.current.setVolume(room.videoVolume ?? 100);
+    } catch {}
   }, [playerReady, isHost, room.videoVolume]);
 
-  /* ------------------------------------------------
-     4) GUEST → FOLLOW HOST VOLUME
-  ------------------------------------------------ */
+  /* MISAFIR SESİ HOSTA BAĞLA */
   useEffect(() => {
     if (!playerReady) return;
     if (isHost) return;
 
     try {
       playerRef.current.setVolume(room.videoVolume ?? 100);
+      playerRef.current.unMute?.();
     } catch {}
-  }, [playerReady, room.videoVolume]);
+  }, [room.videoVolume, playerReady]);
 
-  /* ------------------------------------------------
-     5) GUEST SYNC SEEK + PLAY/PAUSE
-  ------------------------------------------------ */
+  /* MISAFIR SEEK / PLAY-PAUSE SYNC */
   useEffect(() => {
     if (!playerReady) return;
     if (isHost) return;
 
     let target = room.videoTime || 0;
-    const last = room.lastUpdate;
 
-    if (room.playerState === 1 && last?.toMillis) {
-      target += (Date.now() - last.toMillis()) / 1000;
+    if (room.playerState === 1 && room.lastUpdate?.toMillis) {
+      target += (Date.now() - room.lastUpdate.toMillis()) / 1000;
     }
 
     try {
@@ -197,9 +153,11 @@ export function useYoutubePlayer(
         playerRef.current.seekTo(target, true);
       }
 
-      room.playerState === 1
-        ? playerRef.current.playVideo()
-        : playerRef.current.pauseVideo();
+      if (room.playerState === 1) {
+        playerRef.current.playVideo?.();
+      } else {
+        playerRef.current.pauseVideo?.();
+      }
     } catch {}
-  }, [playerReady, room.playerState, room.videoTime, room.lastUpdate]);
+  }, [room.videoTime, room.playerState, room.lastUpdate, playerReady]);
 }

@@ -2,35 +2,47 @@
 
 import { useYoutubePlayer } from "../hooks/useYoutubePlayer";
 import { useEffect, useRef } from "react";
+import { doc, updateDoc } from "firebase/firestore";
+import { db } from "@/firebase/firebaseConfig";
 
 export default function YoutubeSection({ room, user, roomId }) {
+
+  const isHost = user?.uid === room?.ownerId;
+
   const playerContainerRef = useRef<HTMLDivElement | null>(null);
 
+  // Mobil autoplay için gerekli attribute’ler
   useEffect(() => {
     if (playerContainerRef.current) {
-      // 🔥 Mobil autoplay için şart
       playerContainerRef.current.setAttribute("playsinline", "true");
       playerContainerRef.current.setAttribute("webkit-playsinline", "true");
-
-      // 🔥 Chrome autoplay policy için gerekli
       playerContainerRef.current.setAttribute("allow", "autoplay; encrypted-media");
-
-      // 🔥 Mobil WebView autoplay için muted şart
       playerContainerRef.current.setAttribute("muted", "true");
     }
   }, []);
 
-  // 🔥 YouTube Player Hook
+  // YT Player Hook
   useYoutubePlayer(room, user, roomId, playerContainerRef);
+
+  // Global volume update
+  async function handleVolumeChange(e: any) {
+    const vol = Number(e.target.value);
+    await updateDoc(doc(db, "rooms", roomId), {
+      videoVolume: vol
+    });
+  }
 
   return (
     <div className="w-full bg-black flex flex-col items-center">
+
+      {/* ----------------------------- */}
+      {/*   YOUTUBE PLAYER 16:9         */}
+      {/* ----------------------------- */}
       <div
         className="w-full relative flex items-center justify-center"
         style={{
-          // 🚀 Video artık tam genişlik 16:9 ORAN sabit
           aspectRatio: "16 / 9",
-          maxHeight: "50vh", // ekranın üst yarısını doldurur
+          maxHeight: "50vh",
           width: "100%",
           overflow: "hidden",
           backgroundColor: "black",
@@ -41,13 +53,30 @@ export default function YoutubeSection({ room, user, roomId }) {
           id="yt-player-container"
           style={{
             position: "absolute",
-            top: 0,
-            left: 0,
+            inset: 0,
             width: "100%",
             height: "100%",
           }}
         />
       </div>
+
+      {/* ----------------------------- */}
+      {/*   GLOBAL SES KONTROLÜ (HOST)  */}
+      {/* ----------------------------- */}
+      {isHost && (
+        <div className="w-full px-6 py-3 mt-1 flex items-center gap-4">
+          <span className="text-white text-sm">🔊 Ses</span>
+
+          <input
+            type="range"
+            min="0"
+            max="100"
+            value={room.videoVolume ?? 100}
+            onChange={handleVolumeChange}
+            className="flex-1 accent-blue-500"
+          />
+        </div>
+      )}
     </div>
   );
 }
