@@ -146,7 +146,7 @@ export default function CameraSection({ room, user, roomId }: any) {
   }, [lkRoom, currentUid, roomId]);
 
   /* --------------------------------------------------------
-     LOCAL TRACK CONTROL
+     LOCAL TRACK CONTROL — FIXED
 -------------------------------------------------------- */
   useEffect(() => {
     if (!lkRoom) return;
@@ -161,7 +161,7 @@ export default function CameraSection({ room, user, roomId }: any) {
       else if (isAudio1Self) wantMic = audio1Mic && !audioSeat1HostMute;
       else if (isAudio2Self) wantMic = audio2Mic && !audioSeat2HostMute;
 
-      // CAMERA
+      /* -------------------- CAMERA -------------------- */
       if (wantCamera && !localVideoTrack) {
         const v = await createLocalVideoTrack();
         setLocalVideoTrack(v);
@@ -170,12 +170,31 @@ export default function CameraSection({ room, user, roomId }: any) {
       if (localVideoTrack?.mediaStreamTrack)
         localVideoTrack.mediaStreamTrack.enabled = wantCamera;
 
-      // MIC
+      /* -------------------- AUDIO (MIC FIX) -------------------- */
+
+      // MİKROFON KAPALIYSA: Yayını kapat, track'i durdur.
+      if (!wantMic) {
+        if (localAudioTrack) {
+          try {
+            lkRoom.localParticipant.unpublishTrack(localAudioTrack);
+          } catch {}
+          try {
+            localAudioTrack.stop();
+          } catch {}
+        }
+        setLocalAudioTrack(null);
+        return;
+      }
+
+      // MİKROFON AÇIKSA VE TRACK YOKSA: oluştur ve yayınla
       if (wantMic && !localAudioTrack) {
         const a = await createLocalAudioTrack();
         setLocalAudioTrack(a);
         lkRoom.localParticipant.publishTrack(a).catch(() => {});
+        return;
       }
+
+      // Track varsa sadece enable/disable
       if (localAudioTrack?.mediaStreamTrack)
         localAudioTrack.mediaStreamTrack.enabled = wantMic;
     }
@@ -198,7 +217,7 @@ export default function CameraSection({ room, user, roomId }: any) {
   ]);
 
   /* --------------------------------------------------------
-     REMOTE TRACKS — SİNYAL KAYBINI TAM FIX
+     REMOTE TRACKS
 -------------------------------------------------------- */
   useEffect(() => {
     if (!lkRoom) return;
@@ -248,7 +267,7 @@ export default function CameraSection({ room, user, roomId }: any) {
   }, [lkRoom, audio1Uid, audio2Uid, hostUid, guestUid]);
 
   /* --------------------------------------------------------
-     HOST → MUTE / UNMUTE (UYARISIZ)
+     HOST → MUTE / UNMUTE
 -------------------------------------------------------- */
   const hostMuteUser = async (uid: string) => {
     if (!isHost) return;
@@ -277,7 +296,6 @@ export default function CameraSection({ room, user, roomId }: any) {
     const participant = lkRoom.remoteParticipants.get(uid);
     if (!participant) return;
 
-    // Güvenli kontrol – uyarı sorununu çözer
     const audioTracksMap = participant.audioTracks;
     if (!audioTracksMap || typeof audioTracksMap.values !== "function") return;
 

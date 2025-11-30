@@ -90,7 +90,7 @@ export default function CameraSlot({
         className="
           relative
           w-[130px] h-[130px]
-          rounded-xl               /* 🔥 Kare + hafif oval */
+          rounded-xl
           bg-white/5
           border border-white/20
           overflow-hidden
@@ -104,9 +104,7 @@ export default function CameraSlot({
         {/* CAM CONTAINER */}
         <div ref={containerRef} className="absolute inset-0" />
 
-        {/* -------------------------------------------------------
-            SLOT BOŞ → SEATNUMBER + "Boş"
-        ------------------------------------------------------- */}
+        {/* SLOT BOŞ */}
         {!isOccupied && (
           <div className="absolute inset-0 flex flex-col items-center justify-center z-10">
             <p className="text-white/30 text-xs">{seatNumber}</p>
@@ -114,9 +112,7 @@ export default function CameraSlot({
           </div>
         )}
 
-        {/* -------------------------------------------------------
-            SLOT DOLU AMA KAMERA KAPALI → AVATAR
-        ------------------------------------------------------- */}
+        {/* DOLU AMA KAMERA KAPALI */}
         {isOccupied && !cameraOn && (
           <div className="absolute inset-0 flex items-center justify-center z-10">
             {avatar ? (
@@ -131,9 +127,7 @@ export default function CameraSlot({
           </div>
         )}
 
-        {/* -------------------------------------------------------
-            SELF CONTROLS
-        ------------------------------------------------------- */}
+        {/* SELF CONTROLS */}
         {isOccupied && isSelf && showControls && (
           <div
             className="
@@ -178,9 +172,7 @@ export default function CameraSlot({
 
       </div>
 
-      {/* -------------------------------------------------------
-          NICKNAME (slot doluysa)
-      ------------------------------------------------------- */}
+      {/* LABEL */}
       <p className="text-xs text-white/80 mt-1">
         {isOccupied ? nickname : `${seatNumber}. Koltuk`}
       </p>

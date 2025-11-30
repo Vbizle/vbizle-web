@@ -1,23 +1,21 @@
-// app/rooms/[roomId]/components/AudioSlot.tsx
-
 "use client";
 
 import { useEffect, useState } from "react";
 
 export default function AudioSlot({
   seatNumber,
-  occupant,          // { uid, name, avatar, mic, audioTrack }
+  occupant,        // { uid, name, avatar, mic, hostMute, audioTrack }
   isSelf,
   isHost,
   onInvite,
   onKick,
-  onToggleMic,        // self için mic toggle
-  onHostMute          // HOST → diğer kullanıcıyı sustur
+  onToggleMic,
+  onHostMute
 }) {
   const [talking, setTalking] = useState(false);
 
   /* -------------------------------------------------------
-     Aktif konuşma algılama
+     Aktif konuşma algılama (audio level detect)
   -------------------------------------------------------- */
   useEffect(() => {
     if (!occupant?.audioTrack) return;
@@ -31,12 +29,14 @@ export default function AudioSlot({
     return () => clearInterval(interval);
   }, [occupant?.audioTrack]);
 
+
   const isEmpty = !occupant;
+
 
   return (
     <div className="flex flex-col items-center select-none">
 
-      {/* 🔵 YUVARLAK SLOT */}
+      {/* ------------------------- YUVARLAK SLOT ------------------------- */}
       <div
         className={`
           w-[70px] h-[70px]
@@ -57,7 +57,8 @@ export default function AudioSlot({
         {/* DOLU SLOT */}
         {!isEmpty && (
           <img
-            src={occupant.avatar}
+            src={occupant.avatar || "/default-avatar.png"}
+            alt="avatar"
             className="w-full h-full object-cover rounded-full"
           />
         )}
@@ -68,13 +69,13 @@ export default function AudioSlot({
         {isEmpty ? `Ses ${seatNumber}` : occupant.name}
       </div>
 
-      {/* ======================================================
-          SELF → İKONLAR
-      ====================================================== */}
+      {/* -------------------------------------------------------
+          SELF → ikonlar
+      -------------------------------------------------------- */}
       {!isEmpty && isSelf && (
         <div className="flex flex-row gap-2 mt-1">
 
-          {/* 🎙 / 🔇 (KENDİ MİK) */}
+          {/* 🎙 / 🔇 */}
           <button
             onClick={onToggleMic}
             className="
@@ -87,7 +88,7 @@ export default function AudioSlot({
             {occupant.mic ? "🎙" : "🔇"}
           </button>
 
-          {/* ⬇️ Koltuktan in */}
+          {/* Koltuktan in */}
           <button
             onClick={() => onKick(seatNumber)}
             className="
@@ -102,13 +103,13 @@ export default function AudioSlot({
         </div>
       )}
 
-      {/* ======================================================
-          HOST → SUSTUR & KALDIR İKONLARI
-      ====================================================== */}
+      {/* -------------------------------------------------------
+          HOST → Sustur + Kaldır
+      -------------------------------------------------------- */}
       {isHost && !isSelf && !isEmpty && (
         <div className="flex flex-row gap-2 mt-1">
 
-          {/* 🔇 HOST → Sustur */}
+          {/* Sustur */}
           <button
             onClick={() => onHostMute?.(occupant.uid)}
             className="
@@ -121,7 +122,7 @@ export default function AudioSlot({
             🔇
           </button>
 
-          {/* ❌ HOST → Kaldır */}
+          {/* Kaldır */}
           <button
             onClick={() => onKick(seatNumber)}
             className="
@@ -136,7 +137,9 @@ export default function AudioSlot({
         </div>
       )}
 
-      {/* 🔵 BOŞ SLOT → DAVET ET */}
+      {/* -------------------------------------------------------
+          Boş slot → Davet et
+      -------------------------------------------------------- */}
       {isHost && isEmpty && onInvite && (
         <button
           className="mt-2 px-3 py-1 text-xs bg-blue-600 rounded"
