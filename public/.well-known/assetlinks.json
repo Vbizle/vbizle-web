@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.vbizle.app",
+      "sha256_cert_fingerprints": [
+        "5F:B9:0A:91:FC:A0:8F:D1:27:0A:B3:08:72:91:4D:7F:36:DF:83:B5:57:35:65:AB:5F:09:47:6C:0E:F3:89:1D"
+      ]
+    }
+  }
+]
