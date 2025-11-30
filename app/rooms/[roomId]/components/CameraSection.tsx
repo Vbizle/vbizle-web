@@ -171,8 +171,6 @@ export default function CameraSection({ room, user, roomId }: any) {
         localVideoTrack.mediaStreamTrack.enabled = wantCamera;
 
       /* -------------------- AUDIO (MIC FIX) -------------------- */
-
-      // MİKROFON KAPALIYSA: Yayını kapat, track'i durdur.
       if (!wantMic) {
         if (localAudioTrack) {
           try {
@@ -186,7 +184,6 @@ export default function CameraSection({ room, user, roomId }: any) {
         return;
       }
 
-      // MİKROFON AÇIKSA VE TRACK YOKSA: oluştur ve yayınla
       if (wantMic && !localAudioTrack) {
         const a = await createLocalAudioTrack();
         setLocalAudioTrack(a);
@@ -194,7 +191,6 @@ export default function CameraSection({ room, user, roomId }: any) {
         return;
       }
 
-      // Track varsa sadece enable/disable
       if (localAudioTrack?.mediaStreamTrack)
         localAudioTrack.mediaStreamTrack.enabled = wantMic;
     }
@@ -217,7 +213,7 @@ export default function CameraSection({ room, user, roomId }: any) {
   ]);
 
   /* --------------------------------------------------------
-     REMOTE TRACKS
+     REMOTE TRACKS — TAM SES FIX + DOM TEMİZLİĞİ
 -------------------------------------------------------- */
   useEffect(() => {
     if (!lkRoom) return;
@@ -225,19 +221,39 @@ export default function CameraSection({ room, user, roomId }: any) {
     const onSub = (track: any, pub: TrackPublication, participant: RemoteParticipant) => {
       const id = participant.identity?.toString?.() || "";
 
+      /* -------------------- REMOTE VIDEO -------------------- */
       if (track.kind === "video") {
         if (id === hostUid) setRemoteHostVideo(track);
         if (id === guestUid) setRemoteGuestVideo(track);
       }
 
+      /* -------------------- REMOTE AUDIO (FULL FIX) -------------------- */
       if (track.kind === "audio") {
+        // 1) Daha önce aynı kullanıcıya ait audio elementi varsa sil
+        const existing = document.getElementById("audio-" + id);
+        if (existing) existing.remove();
+
+        // 2) Yeni audio elementi attach et
         const el = track.attach();
+        el.id = "audio-" + id;
         el.autoplay = true;
         el.style.display = "none";
-        el.muted = false;
         el.playsInline = true;
+
+        // 3) MIC KONTROL (host, guest, seat1, seat2)
+        let allow = false;
+
+        if (id === hostUid) allow = room.hostState?.mic;
+        if (id === guestUid) allow = room.guestState?.mic;
+        if (id === audio1Uid) allow = audio1Mic && !audioSeat1HostMute;
+        if (id === audio2Uid) allow = audio2Mic && !audioSeat2HostMute;
+
+        el.volume = allow ? 1.0 : 0.0;
+
+        // 4) DOM'a ekle
         document.body.appendChild(el);
 
+        // 5) State güncelle
         if (id === audio1Uid) setAudio1Track(track);
         if (id === audio2Uid) setAudio2Track(track);
       }
@@ -245,6 +261,10 @@ export default function CameraSection({ room, user, roomId }: any) {
 
     const onUnsub = (pub: TrackPublication, participant: RemoteParticipant) => {
       const id = participant.identity?.toString?.() || "";
+
+      /* ---- AUDIO DOM Fix — ÇOK ÖNEMLİ ---- */
+      const oldEl = document.getElementById("audio-" + id);
+      if (oldEl) oldEl.remove();
 
       if (pub.kind === "audio") {
         if (id === audio1Uid) setAudio1Track(null);
@@ -264,7 +284,19 @@ export default function CameraSection({ room, user, roomId }: any) {
       lkRoom.off("trackSubscribed", onSub);
       lkRoom.off("trackUnsubscribed", onUnsub);
     };
-  }, [lkRoom, audio1Uid, audio2Uid, hostUid, guestUid]);
+  }, [
+    lkRoom,
+    audio1Uid,
+    audio2Uid,
+    audio1Mic,
+    audio2Mic,
+    audioSeat1HostMute,
+    audioSeat2HostMute,
+    room.hostState,
+    room.guestState,
+    hostUid,
+    guestUid,
+  ]);
 
   /* --------------------------------------------------------
      HOST → MUTE / UNMUTE
@@ -290,20 +322,6 @@ export default function CameraSection({ room, user, roomId }: any) {
     await updateDoc(roomRef, {
       [`${seatKey}.hostMute`]: isNowMuted,
       [`${seatKey}.mic`]: !isNowMuted,
-    });
-
-    if (!lkRoom) return;
-    const participant = lkRoom.remoteParticipants.get(uid);
-    if (!participant) return;
-
-    const audioTracksMap = participant.audioTracks;
-    if (!audioTracksMap || typeof audioTracksMap.values !== "function") return;
-
-    const pubs = Array.from(audioTracksMap.values());
-    pubs.forEach((pub) => {
-      if (pub?.track?.mediaStreamTrack) {
-        pub.track.mediaStreamTrack.enabled = !isNowMuted;
-      }
     });
   };
 
