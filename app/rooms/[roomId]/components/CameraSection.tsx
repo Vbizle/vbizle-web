@@ -1,4 +1,3 @@
-// app/rooms/[roomId]/components/CameraSection.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -116,7 +115,7 @@ export default function CameraSection({ room, user, roomId }: any) {
   const [audio2Track, setAudio2Track] = useState<any>(null);
 
   /* --------------------------------------------------------
-     CONNECT LIVEKIT
+     CONNECT LIVEKIT — MOBILE SAFE MODE
 -------------------------------------------------------- */
   useEffect(() => {
     async function connectLK() {
@@ -130,15 +129,14 @@ export default function CameraSection({ room, user, roomId }: any) {
       const { token } = await r.json();
 
       const newRoom = new Room({
-        adaptiveStream: true,
-        dynacast: true,
+        adaptiveStream: false,
+        dynacast: false,
+        publishDefaults: {
+          simulcast: false,
+        },
       });
 
       await newRoom.connect(process.env.NEXT_PUBLIC_LIVEKIT_URL!, token);
-
-      newRoom.on("participantConnected", (p) => {
-        p.identity = p.identity?.toString?.() || "";
-      });
 
       setLkRoom(newRoom);
     }
@@ -146,7 +144,7 @@ export default function CameraSection({ room, user, roomId }: any) {
   }, [lkRoom, currentUid, roomId]);
 
   /* --------------------------------------------------------
-     LOCAL TRACK CONTROL — FIXED
+     LOCAL TRACKS (publish safe delay)
 -------------------------------------------------------- */
   useEffect(() => {
     if (!lkRoom) return;
@@ -161,31 +159,33 @@ export default function CameraSection({ room, user, roomId }: any) {
       else if (isAudio1Self) wantMic = audio1Mic && !audioSeat1HostMute;
       else if (isAudio2Self) wantMic = audio2Mic && !audioSeat2HostMute;
 
+      // CAMERA
       if (wantCamera && !localVideoTrack) {
         const v = await createLocalVideoTrack();
+
         setLocalVideoTrack(v);
-        lkRoom.localParticipant.publishTrack(v).catch(() => {});
+        await lkRoom.localParticipant.publishTrack(v);
+
+        // Çok kritik → WebView senkron hatası çözüyor
+        await new Promise((res) => setTimeout(res, 300));
       }
+
       if (localVideoTrack?.mediaStreamTrack)
         localVideoTrack.mediaStreamTrack.enabled = wantCamera;
 
+      // AUDIO — unpublish yerine disable!
       if (!wantMic) {
-        if (localAudioTrack) {
-          try {
-            lkRoom.localParticipant.unpublishTrack(localAudioTrack);
-          } catch {}
-          try {
-            localAudioTrack.stop();
-          } catch {}
-        }
-        setLocalAudioTrack(null);
+        if (localAudioTrack?.mediaStreamTrack)
+          localAudioTrack.mediaStreamTrack.enabled = false;
+
         return;
       }
 
+      // Mic açılıyor
       if (wantMic && !localAudioTrack) {
         const a = await createLocalAudioTrack();
         setLocalAudioTrack(a);
-        lkRoom.localParticipant.publishTrack(a).catch(() => {});
+        await lkRoom.localParticipant.publishTrack(a);
         return;
       }
 
@@ -211,7 +211,7 @@ export default function CameraSection({ room, user, roomId }: any) {
   ]);
 
   /* --------------------------------------------------------
-     REMOTE TRACKS — MOBILE FIX
+     REMOTE TRACKS — FIXED (no DOM append)
 -------------------------------------------------------- */
   useEffect(() => {
     if (!lkRoom) return;
@@ -225,27 +225,17 @@ export default function CameraSection({ room, user, roomId }: any) {
       }
 
       if (track.kind === "audio") {
-        const old = document.getElementById("audio-" + id);
-        if (old) old.remove();
-
         let allow = false;
         if (id === hostUid) allow = room.hostState?.mic;
         if (id === guestUid) allow = room.guestState?.mic;
         if (id === audio1Uid) allow = audio1Mic && !audioSeat1HostMute;
         if (id === audio2Uid) allow = audio2Mic && !audioSeat2HostMute;
 
-        if (!allow) {
-          if (id === audio1Uid) setAudio1Track(null);
-          if (id === audio2Uid) setAudio2Track(null);
-          return;
-        }
+        if (!allow) return;
 
-        const el = track.attach();
-        el.id = "audio-" + id;
-        el.autoplay = true;
-        el.playsInline = true;
-        el.style.display = "none";
-        document.body.appendChild(el);
+        // Audio element DOM'a append edilmez → WebView bug fix
+        const audioEl = track.attach();
+        audioEl.volume = 1.0;
 
         if (id === audio1Uid) setAudio1Track(track);
         if (id === audio2Uid) setAudio2Track(track);
@@ -254,9 +244,6 @@ export default function CameraSection({ room, user, roomId }: any) {
 
     const onUnsub = (pub: TrackPublication, participant: RemoteParticipant) => {
       const id = participant.identity?.toString?.() || "";
-
-      const oldEl = document.getElementById("audio-" + id);
-      if (oldEl) oldEl.remove();
 
       if (pub.kind === "audio") {
         if (id === audio1Uid) setAudio1Track(null);
@@ -278,16 +265,18 @@ export default function CameraSection({ room, user, roomId }: any) {
     };
   }, [
     lkRoom,
+
     audio1Uid,
     audio2Uid,
     audio1Mic,
     audio2Mic,
     audioSeat1HostMute,
     audioSeat2HostMute,
-    room.hostState,
-    room.guestState,
+
     hostUid,
     guestUid,
+    room.hostState,
+    room.guestState,
   ]);
 
   /* --------------------------------------------------------
@@ -350,12 +339,11 @@ export default function CameraSection({ room, user, roomId }: any) {
   };
 
   /* --------------------------------------------------------
-     RENDER — SLOT HİZALAMA DÜZELTİLDİ
+     RENDER
 -------------------------------------------------------- */
   return (
     <div className="w-full flex justify-between items-center px-0 py-2 gap-0">
 
-      {/* HOST SLOT */}
       <CameraSlot
         nickname={hostName}
         avatar={hostAvatar}
@@ -380,7 +368,6 @@ export default function CameraSection({ room, user, roomId }: any) {
         onLeave={leaveAsHost}
       />
 
-      {/* SES SLOT 1 */}
       <AudioSlot
         seatNumber={3}
         occupant={
@@ -414,7 +401,6 @@ export default function CameraSection({ room, user, roomId }: any) {
         onHostMute={hostMuteUser}
       />
 
-      {/* SES SLOT 2 */}
       <AudioSlot
         seatNumber={4}
         occupant={
@@ -448,7 +434,6 @@ export default function CameraSection({ room, user, roomId }: any) {
         onHostMute={hostMuteUser}
       />
 
-      {/* GUEST SLOT */}
       {guestUid ? (
         <CameraSlot
           nickname={guestName}
