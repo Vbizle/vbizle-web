@@ -363,7 +363,7 @@ export default function CameraSection({ room, user, roomId }: any) {
      RENDER
 -------------------------------------------------------- */
   return (
-    <div className="w-full flex justify-between items-center px-4 py-4 gap-4">
+    <div className="w-full flex justify-center items-center px-2 py-3 gap-2 flex-wrap">
       <CameraSlot
         nickname={hostName}
         avatar={hostAvatar}
