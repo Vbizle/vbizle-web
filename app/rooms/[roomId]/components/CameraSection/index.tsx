@@ -110,25 +110,20 @@ export default function CameraSection({ room, user, roomId }) {
 
   /* --------------------------------------------------------
      FINAL: SLOT-BAĞIMSIZ LEAVE FONKSİYONLARI
-     (TikTok/Bigo seviyesinde)
 -------------------------------------------------------- */
 
-  // HOST in yaparsa: slot boşalmaz → sadece kamerayı kapatır
   const leaveAsHost = async () => {
-    // Kamera ve mic Firestore kapanır
     await updateDoc(doc(db, "rooms", roomId), {
       "hostState.camera": false,
       "hostState.mic": false,
     });
 
-    // Local track disable edilir (stop edilmez)
     if (localVideoTrack?.mediaStreamTrack)
       localVideoTrack.mediaStreamTrack.enabled = false;
     if (localAudioTrack?.mediaStreamTrack)
       localAudioTrack.mediaStreamTrack.enabled = false;
   };
 
-  // GUEST in yaparsa: seat boşalır → diğer slotlara asla dokunmaz
   const leaveAsGuest = async () => {
     await updateDoc(doc(db, "rooms", roomId), {
       guestSeat: "",
@@ -161,8 +156,25 @@ export default function CameraSection({ room, user, roomId }) {
   };
 
   /* --------------------------------------------------------
+     🔥 RECONNECTED → UI REFRESH (EN ÖNEMLİ KISIM)
+-------------------------------------------------------- */
+  useEffect(() => {
+    if (!lk.lkRoom) return;
+
+    function onReconnected() {
+      console.log("🔥 LiveKit Reconnected — CameraSection UI Refresh");
+      // UI forced refresh
+      setHostProfile((p) => ({ ...p }));
+    }
+
+    lk.lkRoom.on("reconnected", onReconnected);
+    return () => lk.lkRoom.off("reconnected", onReconnected);
+  }, [lk.lkRoom]);
+
+  /* --------------------------------------------------------
      UI
   -------------------------------------------------------- */
+
   return (
     <div className="w-full flex justify-between items-center px-0 py-2 gap-0">
 

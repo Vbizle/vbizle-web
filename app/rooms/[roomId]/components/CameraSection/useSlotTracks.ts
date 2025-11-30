@@ -35,77 +35,66 @@ export default function useSlotTracks({
   const isAudio2Self = currentUid === audioSeat2.uid;
 
   /* --------------------------------------------------------
-     LOCAL TRACKS — SADECE ENABLE (stop yok)
+     🔥 1) LOCAL TRACKS — stop yok, sadece enable değişir
   -------------------------------------------------------- */
-  useEffect(() => {
+  async function ensureLocalTracks() {
     if (!lkRoom) return;
 
-    async function updateLocalTracks() {
-      /* -------------------------
-         CAMERA
-      --------------------------*/
-      const wantCamera =
-        isHost
-          ? room.hostState?.camera
-          : isGuestSelf
-          ? room.guestState?.camera
-          : false;
+    /* CAMERA */
+    const wantCamera = isHost
+      ? room.hostState?.camera
+      : isGuestSelf
+      ? room.guestState?.camera
+      : false;
 
-      if (wantCamera && !localVideoTrack) {
-        const v = await createLocalVideoTrack();
+    if (wantCamera && !localVideoTrack) {
+      const v = await createLocalVideoTrack();
+      v.mediaStreamTrack.enabled = true;
 
-        v.mediaStreamTrack.enabled = true;
-        setLocalVideoTrack(v);
-
-        await lkRoom.localParticipant.publishTrack(v).catch(() => {});
-      }
-
-      if (localVideoTrack?.mediaStreamTrack) {
-        localVideoTrack.mediaStreamTrack.enabled = wantCamera;
-      }
-
-      /* -------------------------
-         MICROPHONE
-      --------------------------*/
-      let wantMic = false;
-
-      if (isHost) wantMic = room.hostState?.mic;
-      else if (isGuestSelf) wantMic = room.guestState?.mic;
-      else if (isAudio1Self)
-        wantMic = audioSeat1.mic && !audioSeat1.hostMute;
-      else if (isAudio2Self)
-        wantMic = audioSeat2.mic && !audioSeat2.hostMute;
-
-      if (wantMic && !localAudioTrack) {
-        const a = await createLocalAudioTrack();
-
-        a.mediaStreamTrack.enabled = true;
-        setLocalAudioTrack(a);
-
-        await lkRoom.localParticipant.publishTrack(a).catch(() => {});
-      }
-
-      if (localAudioTrack?.mediaStreamTrack) {
-        localAudioTrack.mediaStreamTrack.enabled = wantMic;
-      }
+      setLocalVideoTrack(v);
+      await lkRoom.localParticipant.publishTrack(v).catch(() => {});
     }
 
-    updateLocalTracks();
+    if (localVideoTrack?.mediaStreamTrack) {
+      localVideoTrack.mediaStreamTrack.enabled = wantCamera;
+    }
+
+    /* MICROPHONE */
+    let wantMic = false;
+
+    if (isHost) wantMic = room.hostState?.mic;
+    else if (isGuestSelf) wantMic = room.guestState?.mic;
+    else if (isAudio1Self) wantMic = audioSeat1.mic && !audioSeat1.hostMute;
+    else if (isAudio2Self) wantMic = audioSeat2.mic && !audioSeat2.hostMute;
+
+    if (wantMic && !localAudioTrack) {
+      const a = await createLocalAudioTrack();
+      a.mediaStreamTrack.enabled = true;
+
+      setLocalAudioTrack(a);
+      await lkRoom.localParticipant.publishTrack(a).catch(() => {});
+    }
+
+    if (localAudioTrack?.mediaStreamTrack) {
+      localAudioTrack.mediaStreamTrack.enabled = wantMic;
+    }
+  }
+
+  useEffect(() => {
+    ensureLocalTracks();
   }, [
     lkRoom,
     room.hostState,
     room.guestState,
     audioSeat1,
     audioSeat2,
-    localVideoTrack,
-    localAudioTrack,
     currentUid,
     hostUid,
     guestUid,
   ]);
 
   /* --------------------------------------------------------
-     REMOTE TRACKS — ÇÖKMESİZ
+     🔥 2) REMOTE TRACKS — tüm video/audio bağlama
   -------------------------------------------------------- */
   useEffect(() => {
     if (!lkRoom) return;
@@ -157,7 +146,33 @@ export default function useSlotTracks({
   }, [lkRoom, audioSeat1, audioSeat2, hostUid, guestUid]);
 
   /* --------------------------------------------------------
-     RETURN — sadece track yöneticisi
+     🔥 3) RECONNECT EVENT — kamera/mikrofon + remote geri bağla
+  -------------------------------------------------------- */
+  useEffect(() => {
+    if (!lkRoom) return;
+
+    function handleReconnected() {
+      console.log("🔥 useSlotTracks → RECONNECTED → Track sync");
+
+      // Local trackleri yeniden yayınla
+      ensureLocalTracks();
+
+      // Remote tracklerin yeniden sync olması için reset
+      setRemoteHostVideo((prev) => prev);
+      setRemoteGuestVideo((prev) => prev);
+      setAudio1Track((prev) => prev);
+      setAudio2Track((prev) => prev);
+    }
+
+    lkRoom.on("reconnected", handleReconnected);
+
+    return () => {
+      lkRoom.off("reconnected", handleReconnected);
+    };
+  }, [lkRoom]);
+
+  /* --------------------------------------------------------
+     EXPORT
   -------------------------------------------------------- */
   return {
     localVideoTrack,

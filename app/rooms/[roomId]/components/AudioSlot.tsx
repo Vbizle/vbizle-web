@@ -1,29 +1,70 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export default function AudioSlot({
   seatNumber,
-  occupant,        
+  occupant,
   isSelf,
   isHost,
   onInvite,
   onKick,
   onToggleMic,
-  onHostMute
+  onHostMute,
 }) {
   const [talking, setTalking] = useState(false);
 
+  // 🔥 Global audio element (track attach/detach için)
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
   /* -------------------------------------------------------
-     Aktif konuşma algılama
+     🔥 PROFESSIONAL AUDIO ATTACH / DETACH PIPELINE
+     (TikTok/Bigo seviyesinde)
+  -------------------------------------------------------- */
+  useEffect(() => {
+    const track = occupant?.audioTrack;
+    if (!track) return;
+
+    // Audio element yoksa oluştur
+    if (!audioRef.current) {
+      const el = document.createElement("audio");
+      el.autoplay = true;
+      el.playsInline = true;
+      el.style.display = "none";
+      document.body.appendChild(el);
+      audioRef.current = el;
+    }
+
+    const el = audioRef.current;
+
+    // Eski detach
+    try {
+      track.detach(el);
+    } catch {}
+
+    // Yeni attach
+    try {
+      track.attach(el);
+    } catch {}
+
+    return () => {
+      try {
+        track.detach(el);
+      } catch {}
+    };
+  }, [occupant?.audioTrack]);
+
+  /* -------------------------------------------------------
+     🔥 KONUŞMA ALGILAMA (ses seviyesi)
   -------------------------------------------------------- */
   useEffect(() => {
     if (!occupant?.audioTrack) return;
 
     const track = occupant.audioTrack;
+
     const interval = setInterval(() => {
       const level = track.getMonitorLevel?.() || 0;
-      setTalking(level > 0.1);
+      setTalking(level > 0.10); // threshold
     }, 200);
 
     return () => clearInterval(interval);
@@ -34,10 +75,12 @@ export default function AudioSlot({
   return (
     <div className="flex flex-col items-center select-none gap-1">
 
-      {/* ------------------------- DÜŞÜRÜLMÜŞ SES SLOTU (40px) ------------------------- */}
+      {/* -------------------------------------------------
+           SES SLOTU (40px) + Konuşma animasyonu
+      -------------------------------------------------- */}
       <div
         className={`
-          w-[40px] h-[40px]        /* 🔥 50 → 40 */
+          w-[40px] h-[40px]
           rounded-full
           bg-white/5 border border-white/20
           flex items-center justify-center
@@ -67,13 +110,12 @@ export default function AudioSlot({
         {isEmpty ? `Ses ${seatNumber}` : occupant.name}
       </div>
 
-      {/* -------------------------------------------------------
-          SELF → ikonlar (küçültülmüş)
-      -------------------------------------------------------- */}
+      {/* -------------------------------------------------
+           SELF — Kullanıcı kendi slotundaysa
+      -------------------------------------------------- */}
       {!isEmpty && isSelf && (
         <div className="flex flex-row gap-1 mt-1">
-
-          {/* 🎙 / 🔇 */}
+          {/* Mikrofon */}
           <button
             onClick={onToggleMic}
             className="
@@ -82,7 +124,6 @@ export default function AudioSlot({
               rounded-full
               text-white text-[10px]
             "
-            title="Mikrofon"
           >
             {occupant.mic ? "🎙" : "🔇"}
           </button>
@@ -96,19 +137,17 @@ export default function AudioSlot({
               rounded-full
               text-white text-[10px]
             "
-            title="Koltuktan İn"
           >
             ⬇️
           </button>
         </div>
       )}
 
-      {/* -------------------------------------------------------
-          HOST → Sustur + Kaldır
-      -------------------------------------------------------- */}
+      {/* -------------------------------------------------
+          HOST → Yönetim seçenekleri
+      -------------------------------------------------- */}
       {isHost && !isSelf && !isEmpty && (
         <div className="flex flex-row gap-1 mt-1">
-
           {/* Sustur */}
           <button
             onClick={() => onHostMute?.(occupant.uid)}
@@ -118,7 +157,6 @@ export default function AudioSlot({
               rounded-full
               text-white text-[10px]
             "
-            title="Sustur"
           >
             🔇
           </button>
@@ -132,16 +170,15 @@ export default function AudioSlot({
               rounded-full
               text-white text-[10px]
             "
-            title="Kaldır"
           >
             ❌
           </button>
         </div>
       )}
 
-      {/* -------------------------------------------------------
-          Boş slot → Davet et
-      -------------------------------------------------------- */}
+      {/* -------------------------------------------------
+          HOST — Boş slot → Davet Et
+      -------------------------------------------------- */}
       {isHost && isEmpty && onInvite && (
         <button
           className="mt-1 px-2 py-[2px] text-[9px] bg-blue-600 rounded"

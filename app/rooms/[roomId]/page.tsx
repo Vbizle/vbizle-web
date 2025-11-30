@@ -129,7 +129,15 @@ export default function RoomPage() {
   }
 
   return (
-    <div className="h-screen bg-black text-white flex flex-col overflow-hidden">
+    <div
+      className="h-screen text-white flex flex-col overflow-hidden"
+      style={{
+        backgroundImage: "url('/room-bg.jpg')",
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+        backgroundRepeat: "no-repeat",
+      }}
+    >
 
       {/* ÜST BLOK */}
       <div className="flex-shrink-0 flex flex-col">

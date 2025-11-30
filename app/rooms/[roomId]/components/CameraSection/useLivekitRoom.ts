@@ -10,8 +10,6 @@ interface Props {
 
 export default function useLivekitRoom({ roomId, currentUid }: Props) {
   const [lkRoom, setLkRoom] = useState<Room | null>(null);
-
-  // Duplicate connect engelleme
   const connectingRef = useRef(false);
 
   useEffect(() => {
@@ -20,15 +18,15 @@ export default function useLivekitRoom({ roomId, currentUid }: Props) {
     if (connectingRef.current) return;
 
     connectingRef.current = true;
-    let closed = false;
+
+    let cancelled = false;
 
     async function connect() {
       try {
-        /* 1) Token al */
+        // 🔥 TOKEN AL
         const r = await fetch(
           `${process.env.NEXT_PUBLIC_LIVEKIT_TOKEN_ENDPOINT}?room=${roomId}&identity=${currentUid}`
         );
-
         if (!r.ok) {
           connectingRef.current = false;
           return;
@@ -36,38 +34,50 @@ export default function useLivekitRoom({ roomId, currentUid }: Props) {
 
         const { token } = await r.json();
 
-        /* 2) Room oluştur */
+        // 🔥 ROOM OLUŞTUR
         const room = new Room({
-          adaptiveStream: true,   // otomatik kalite
-          dynacast: true,         // CPU tasarrufu
+          adaptiveStream: true,
+          dynacast: true,
+          reconnectPolicy: {
+            // profesyonel reconnect
+            maxRetries: 10,
+            retryDelay: 1000,
+          },
           publishDefaults: {
             simulcast: false,
           },
         });
 
-        /* 3) Connect */
+        // 🔥 BAĞLAN
         await room.connect(process.env.NEXT_PUBLIC_LIVEKIT_URL!, token);
+        if (cancelled) return;
 
-        if (closed) return;
-
-        setLkRoom(room);
-
-        /* 4) Window kapanırsa → sessiz disconnect */
-        window.addEventListener("beforeunload", () => {
-          try {
-            room.disconnect();
-          } catch {}
+        // ID normalize
+        room.on("participantConnected", (p) => {
+          p.identity = p.identity?.toString() || "";
+        });
+        room.on("participantDisconnected", (p) => {
+          p.identity = p.identity?.toString() || "";
         });
 
-        /* 5) Route değişirse / sayfa kapanırsa → disconnect */
-        window.addEventListener("visibilitychange", () => {
-          if (document.visibilityState === "hidden") {
+        // 🔥 OTOMATİK RECONNECT LOG
+        room.on("reconnecting", () => {
+          console.log("⚠ LiveKit reconnecting...");
+        });
+        room.on("reconnected", () => {
+          console.log("✅ LiveKit reconnected successfully");
+        });
+
+        // 🔥 ARKA PLANDA OTOMATİK RESUME (disconnect DEĞİL)
+        document.addEventListener("visibilitychange", () => {
+          if (document.visibilityState === "visible") {
             try {
-              room.disconnect();
+              room.resumeConnection?.();
             } catch {}
           }
         });
 
+        setLkRoom(room);
       } catch (err) {
         console.error("LiveKit Connect Error:", err);
         connectingRef.current = false;
@@ -77,9 +87,9 @@ export default function useLivekitRoom({ roomId, currentUid }: Props) {
     connect();
 
     return () => {
-      closed = true;
+      cancelled = true;
     };
   }, [currentUid, roomId, lkRoom]);
 
   return { lkRoom };
-}
+} 
