@@ -161,7 +161,6 @@ export default function CameraSection({ room, user, roomId }: any) {
       else if (isAudio1Self) wantMic = audio1Mic && !audioSeat1HostMute;
       else if (isAudio2Self) wantMic = audio2Mic && !audioSeat2HostMute;
 
-      // CAMERA
       if (wantCamera && !localVideoTrack) {
         const v = await createLocalVideoTrack();
         setLocalVideoTrack(v);
@@ -170,7 +169,6 @@ export default function CameraSection({ room, user, roomId }: any) {
       if (localVideoTrack?.mediaStreamTrack)
         localVideoTrack.mediaStreamTrack.enabled = wantCamera;
 
-      // AUDIO — mic kapalı iken unpublish
       if (!wantMic) {
         if (localAudioTrack) {
           try {
@@ -213,7 +211,7 @@ export default function CameraSection({ room, user, roomId }: any) {
   ]);
 
   /* --------------------------------------------------------
-     REMOTE TRACKS — MOBİL FİX (MIC KAPALIYSA ASLA ATTACH YOK)
+     REMOTE TRACKS — MOBILE FIX
 -------------------------------------------------------- */
   useEffect(() => {
     if (!lkRoom) return;
@@ -221,39 +219,32 @@ export default function CameraSection({ room, user, roomId }: any) {
     const onSub = (track: any, pub: TrackPublication, participant: RemoteParticipant) => {
       const id = participant.identity?.toString?.() || "";
 
-      /* ---------- REMOTE VIDEO ---------- */
       if (track.kind === "video") {
         if (id === hostUid) setRemoteHostVideo(track);
         if (id === guestUid) setRemoteGuestVideo(track);
       }
 
-      /* ---------- REMOTE AUDIO — MOBİL FIX ---------- */
       if (track.kind === "audio") {
-        // Eski audio DOM’larını temizle
         const old = document.getElementById("audio-" + id);
         if (old) old.remove();
 
-        // Mic izin kontrolü
         let allow = false;
         if (id === hostUid) allow = room.hostState?.mic;
         if (id === guestUid) allow = room.guestState?.mic;
         if (id === audio1Uid) allow = audio1Mic && !audioSeat1HostMute;
         if (id === audio2Uid) allow = audio2Mic && !audioSeat2HostMute;
 
-        // ❗ MOBİL FIX: mic kapalıysa attach bile ETME
         if (!allow) {
           if (id === audio1Uid) setAudio1Track(null);
           if (id === audio2Uid) setAudio2Track(null);
           return;
         }
 
-        // Mic açık → attach
         const el = track.attach();
         el.id = "audio-" + id;
         el.autoplay = true;
         el.playsInline = true;
         el.style.display = "none";
-        el.volume = 1.0;
         document.body.appendChild(el);
 
         if (id === audio1Uid) setAudio1Track(track);
@@ -264,7 +255,6 @@ export default function CameraSection({ room, user, roomId }: any) {
     const onUnsub = (pub: TrackPublication, participant: RemoteParticipant) => {
       const id = participant.identity?.toString?.() || "";
 
-      // DOM temizliği
       const oldEl = document.getElementById("audio-" + id);
       if (oldEl) oldEl.remove();
 
@@ -301,7 +291,7 @@ export default function CameraSection({ room, user, roomId }: any) {
   ]);
 
   /* --------------------------------------------------------
-     HOST → MUTE / UNMUTE
+     HOST MUTE / UNMUTE
 -------------------------------------------------------- */
   const hostMuteUser = async (uid: string) => {
     if (!isHost) return;
@@ -328,7 +318,7 @@ export default function CameraSection({ room, user, roomId }: any) {
   };
 
   /* --------------------------------------------------------
-     LEAVE
+     LEAVERS
 -------------------------------------------------------- */
   const leaveAsHost = async () => {
     await lkRoom?.disconnect();
@@ -360,10 +350,12 @@ export default function CameraSection({ room, user, roomId }: any) {
   };
 
   /* --------------------------------------------------------
-     RENDER
+     RENDER — SLOT HİZALAMA DÜZELTİLDİ
 -------------------------------------------------------- */
   return (
-    <div className="w-full flex justify-center items-center px-2 py-3 gap-2 flex-wrap">
+    <div className="w-full flex justify-between items-center px-0 py-2 gap-0">
+
+      {/* HOST SLOT */}
       <CameraSlot
         nickname={hostName}
         avatar={hostAvatar}
@@ -388,6 +380,7 @@ export default function CameraSection({ room, user, roomId }: any) {
         onLeave={leaveAsHost}
       />
 
+      {/* SES SLOT 1 */}
       <AudioSlot
         seatNumber={3}
         occupant={
@@ -421,6 +414,7 @@ export default function CameraSection({ room, user, roomId }: any) {
         onHostMute={hostMuteUser}
       />
 
+      {/* SES SLOT 2 */}
       <AudioSlot
         seatNumber={4}
         occupant={
@@ -454,6 +448,7 @@ export default function CameraSection({ room, user, roomId }: any) {
         onHostMute={hostMuteUser}
       />
 
+      {/* GUEST SLOT */}
       {guestUid ? (
         <CameraSlot
           nickname={guestName}
@@ -490,6 +485,7 @@ export default function CameraSection({ room, user, roomId }: any) {
           micOn={false}
         />
       )}
+
     </div>
   );
 }

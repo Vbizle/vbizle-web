@@ -55,13 +55,11 @@ export default function CameraSlot({
 
     const track = isSelf ? localTrack : remoteTrack;
 
-    // Kamera kapalı → video tamamen gizle
     if (!track || !cameraOn) {
       if (videoRef.current) videoRef.current.style.display = "none";
       return;
     }
 
-    // Video element create
     if (!videoRef.current) {
       videoRef.current = document.createElement("video");
       videoRef.current.autoplay = true;
@@ -84,12 +82,12 @@ export default function CameraSlot({
      UI
   ------------------------------------------------------- */
   return (
-    <div className="flex flex-col items-center gap-2 select-none">
+    <div className="flex flex-col items-center gap-1 select-none">
 
       <div
         className="
           relative
-          w-[130px] h-[130px]
+          w-[120px] h-[120px]     /* 🔥 130 → 120 */
           rounded-xl
           bg-white/5
           border border-white/20

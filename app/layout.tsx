@@ -12,7 +12,7 @@ import { RoomProvider } from "./providers/RoomProvider";
 import MiniRoomBubble from "@/components/MiniRoomBubble";
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<any>(undefined); // 🔥 null değil undefined başlat
+  const [user, setUser] = useState<any>(undefined);
   const pathname = usePathname();
   const router = useRouter();
 
@@ -21,7 +21,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     pathname.startsWith("/rooms/") || pathname === "/create-room";
   const isDMPage = pathname.startsWith("/messages/");
 
-  // 🔥 Firebase yükleniyor mu kontrolü
   const loading = user === undefined;
 
   useEffect(() => {
@@ -31,14 +30,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     return () => unsub();
   }, []);
 
-  // 🔥 Kullanıcı yok ve auth sayfasında değil → login'e at
   useEffect(() => {
     if (!loading && user === null && !isAuthPage) {
       router.replace("/login");
     }
   }, [user, loading, pathname, router]);
 
-  // 🔥 Firebase yüklenene kadar hiçbir şey gösterme
   if (loading) {
     return (
       <html lang="tr">
@@ -49,7 +46,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     );
   }
 
-  // 🔥 Kullanıcı login ise login ekranını göstermeyi engelle
   if (user && isAuthPage) {
     router.replace("/");
     return null;
@@ -77,9 +73,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
         <AuthProvider>
           <RoomProvider>
-            {/* 🔥 NAVBAR — sadece login kullanıcı + normal sayfa */}
+            {/* NAVBAR */}
             {user && !isRoomPage && !isDMPage && !isAuthPage && (
-              <header className="w-full border-b border-white/10 p-4 flex justify-between max-w-6xl mx-auto">
+              <header className="w-full border-b border-white/10 p-4 flex justify-between 
+              w-full max-w-none md:max-w-6xl mx-auto">
                 <h1 className="text-2xl font-bold">Vbizle</h1>
                 <nav className="flex gap-6">
                   <a href="/">Ana Sayfa</a>
@@ -88,7 +85,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               </header>
             )}
 
-            <main className="max-w-6xl mx-auto px-4 py-4">
+            <main className="w-full max-w-none md:max-w-6xl mx-auto px-2 md:px-4 py-4">
               {children}
             </main>
 
