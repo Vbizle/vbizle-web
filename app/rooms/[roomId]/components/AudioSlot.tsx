@@ -29,17 +29,15 @@ export default function AudioSlot({
     return () => clearInterval(interval);
   }, [occupant?.audioTrack]);
 
-
   const isEmpty = !occupant;
-
 
   return (
     <div className="flex flex-col items-center select-none">
 
-      {/* ------------------------- YUVARLAK SLOT ------------------------- */}
+      {/* ------------------------- KÜÇÜLTÜLMÜŞ YUVARLAK SLOT ------------------------- */}
       <div
         className={`
-          w-[70px] h-[70px]
+          w-[50px] h-[50px]              /* küçültüldü */
           rounded-full
           bg-white/5 border border-white/20
           flex items-center justify-center
@@ -49,7 +47,7 @@ export default function AudioSlot({
       >
         {/* BOŞ SLOT */}
         {isEmpty && (
-          <div className="text-white/30 text-xs text-center px-1">
+          <div className="text-white/30 text-[10px] text-center px-1">
             Ses {seatNumber}
           </div>
         )}
@@ -65,23 +63,24 @@ export default function AudioSlot({
       </div>
 
       {/* Kullanıcı adı */}
-      <div className="text-xs text-white/70 mt-1 truncate w-[70px] text-center">
+      <div className="text-[10px] text-white/70 mt-1 truncate w-[50px] text-center">
         {isEmpty ? `Ses ${seatNumber}` : occupant.name}
       </div>
 
       {/* -------------------------------------------------------
-          SELF → ikonlar
+          SELF → ikonlar (küçültülmüş)
       -------------------------------------------------------- */}
       {!isEmpty && isSelf && (
-        <div className="flex flex-row gap-2 mt-1">
+        <div className="flex flex-row gap-1 mt-1">
 
           {/* 🎙 / 🔇 */}
           <button
             onClick={onToggleMic}
             className="
               bg-black/40 hover:bg-black/60
-              p-1.5 rounded-full
-              text-white text-sm
+              px-1.5 py-1
+              rounded-full
+              text-white text-xs
             "
             title="Mikrofon"
           >
@@ -93,8 +92,9 @@ export default function AudioSlot({
             onClick={() => onKick(seatNumber)}
             className="
               bg-white/20 hover:bg-white/30
-              p-1.5 rounded-full
-              text-white text-sm
+              px-1.5 py-1
+              rounded-full
+              text-white text-xs
             "
             title="Koltuktan İn"
           >
@@ -104,18 +104,19 @@ export default function AudioSlot({
       )}
 
       {/* -------------------------------------------------------
-          HOST → Sustur + Kaldır
+          HOST → Sustur + Kaldır (küçültülmüş)
       -------------------------------------------------------- */}
       {isHost && !isSelf && !isEmpty && (
-        <div className="flex flex-row gap-2 mt-1">
+        <div className="flex flex-row gap-1 mt-1">
 
           {/* Sustur */}
           <button
             onClick={() => onHostMute?.(occupant.uid)}
             className="
               bg-yellow-600 hover:bg-yellow-700
-              p-1.5 rounded-full
-              text-white text-sm
+              px-1.5 py-1
+              rounded-full
+              text-white text-xs
             "
             title="Sustur"
           >
@@ -127,8 +128,9 @@ export default function AudioSlot({
             onClick={() => onKick(seatNumber)}
             className="
               bg-red-600 hover:bg-red-700
-              p-1.5 rounded-full
-              text-white text-sm
+              px-1.5 py-1
+              rounded-full
+              text-white text-xs
             "
             title="Kaldır"
           >
@@ -142,7 +144,7 @@ export default function AudioSlot({
       -------------------------------------------------------- */}
       {isHost && isEmpty && onInvite && (
         <button
-          className="mt-2 px-3 py-1 text-xs bg-blue-600 rounded"
+          className="mt-2 px-2 py-0.5 text-[10px] bg-blue-600 rounded"
           onClick={() => onInvite(seatNumber)}
         >
           Davet Et
