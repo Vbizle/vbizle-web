@@ -9,37 +9,88 @@ import {
   onSnapshot,
   collectionGroup,
   getDoc,
+  runTransaction,
+  setDoc,
 } from "firebase/firestore";
 
 import { useEffect, useState } from "react";
 
-export default function AuthProvider({ children }: any) {
-  const [userLoaded, setUserLoaded] = useState(false);
-  const [me, setMe] = useState<any>(null);
+// 🔥 VB CÜZDAN HOOK
+import { useVbWallet } from "@/app/hooks/useVbWallet";
 
+// ==========================================================
+//  SIRALI VB-ID (VB-1 → VB-2 → VB-3 ... )
+// ==========================================================
+async function ensureSequentialVbId(uid: string) {
+  const userRef = doc(db, "users", uid);
+  const counterRef = doc(db, "_counters", "vbUserCounter");
+
+  const userSnap = await getDoc(userRef);
+
+  // Kullanıcı zaten vbId aldıysa → çık
+  if (userSnap.exists() && userSnap.data().vbId) return;
+
+  await runTransaction(db, async (transaction) => {
+    let counterSnap = await transaction.get(counterRef);
+
+    if (!counterSnap.exists()) {
+      transaction.set(counterRef, { last: 0 });
+      counterSnap = {
+        exists: () => true,
+        data: () => ({ last: 0 }),
+      };
+    }
+
+    const last = counterSnap.data().last ?? 0;
+    const next = last + 1;
+
+    transaction.update(counterRef, { last: next });
+
+    const vbId = `VB-${next}`;
+    transaction.update(userRef, { vbId });
+  });
+}
+
+// ==========================================================
+//                      AUTH PROVIDER
+// ==========================================================
+export default function AuthProvider({ children }: any) {
+  const [firebaseUser, setFirebaseUser] = useState<any>(null);
+  const [me, setMe] = useState<any>(null);
+  const [userLoaded, setUserLoaded] = useState(false);
+
+  // --------------------------------------------------------
+  // LOGIN / LOGOUT
+  // --------------------------------------------------------
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
+      setFirebaseUser(u || null);
+
       if (!u) {
         setUserLoaded(true);
         return;
       }
 
-      // BENİ KAYDET
-      const meSnap = await getDoc(doc(db, "users", u.uid));
+      const userRef = doc(db, "users", u.uid);
+
+      // 🔥 Önce VB-ID ata (yoksa)
+      await ensureSequentialVbId(u.uid);
+
+      // 🔥 Şimdi kullanıcıyı tekrar oku (vbId artık var)
+      const meSnap = await getDoc(userRef);
+
       setMe({
         uid: u.uid,
         name: meSnap.data()?.username,
         avatar: meSnap.data()?.avatar,
+        vbId: meSnap.data()?.vbId, // artık kesin var
       });
 
       // Online yap
-      await updateDoc(doc(db, "users", u.uid), {
-        online: true,
-      });
+      await updateDoc(userRef, { online: true });
 
-      // Sekme kapanınca offline yap
       const handleLeave = async () => {
-        await updateDoc(doc(db, "users", u.uid), {
+        await updateDoc(userRef, {
           online: false,
           lastSeen: serverTimestamp(),
         });
@@ -58,13 +109,17 @@ export default function AuthProvider({ children }: any) {
     return () => unsub();
   }, []);
 
-  //
-  //  🔥 GLOBAL DM LISTENER (her sayfada çalışır)
-  //
+  // --------------------------------------------------------
+  // 2) CÜZDAN ALANLARINI OLUŞTUR
+  // --------------------------------------------------------
+  useVbWallet(firebaseUser);
+
+  // --------------------------------------------------------
+  // 3) GLOBAL DM BİLDİRİMLERİ
+  // --------------------------------------------------------
   useEffect(() => {
     if (!me) return;
 
-    // META bütün konuşmalardaki unread + lastMsg'i içerir
     const unsub = onSnapshot(collectionGroup(db, "meta"), async (snap) => {
       snap.docChanges().forEach(async (change) => {
         if (change.type !== "modified") return;
@@ -76,13 +131,11 @@ export default function AuthProvider({ children }: any) {
         const [a, b] = convId.split("_");
         const otherId = a === me.uid ? b : b === me.uid ? a : null;
 
-        // Eğer konuşma bana ait değilse → geç
         if (!otherId) return;
 
         const unread = data?.unread?.[me.uid] ?? 0;
         const lastSender = data?.lastSender;
 
-        // unread varsa ve gönderen ben DEĞİLSEM → bildirim göster
         if (unread > 0 && lastSender !== me.uid) {
           const userSnap = await getDoc(doc(db, "users", otherId));
           const senderName =
@@ -96,9 +149,9 @@ export default function AuthProvider({ children }: any) {
     return () => unsub();
   }, [me]);
 
-  //
-  // 🔵 BASİT GLOBAL TOAST
-  //
+  // --------------------------------------------------------
+  // TOAST
+  // --------------------------------------------------------
   function showGlobalToast(text: string) {
     const div = document.createElement("div");
     div.innerText = text;
@@ -113,18 +166,13 @@ export default function AuthProvider({ children }: any) {
     div.style.borderRadius = "12px";
     div.style.fontSize = "15px";
     div.style.zIndex = "99999";
-    div.style.boxShadow = "0 4px 12px rgba(0,0,0,0.25)";
-    div.style.transition = "all 0.3s ease";
 
     document.body.appendChild(div);
 
     setTimeout(() => {
       div.style.opacity = "0";
       div.style.top = "0px";
-
-      setTimeout(() => {
-        document.body.removeChild(div);
-      }, 300);
+      setTimeout(() => div.remove(), 300);
     }, 2500);
   }
 

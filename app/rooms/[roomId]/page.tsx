@@ -22,13 +22,26 @@ import ChatInput from "./components/ChatInput";
 import CameraSection from "./components/CameraSection";
 import ProfilePopup from "./components/ProfilePopup";
 
-// 🔥 Kamera Daveti popup (eski)
 import CameraInvite from "./components/CameraInvite";
-
-// 🔥 Yeni Ses Daveti popup
 import AudioInvite from "./components/AudioInvite";
 
 import { useRoomState } from "@/app/providers/RoomProvider";
+import DonationBar from "./components/DonationBar";
+import DonationSettingsModal from "./components/DonationSettingsModal";
+
+// ⭐ Toast
+import VbDonationToast from "@/app/components/VbDonationToast";
+
+// ⭐ Firestore listener
+import {
+  collection,
+  query,
+  where,
+  onSnapshot,
+  orderBy,
+  limit,
+} from "firebase/firestore";
+import { db } from "@/firebase/firebaseConfig";
 
 export default function RoomPage() {
   const { roomId } = useParams();
@@ -38,13 +51,9 @@ export default function RoomPage() {
     return isMinimized && minimizedRoom?.roomId === roomId;
   }, [isMinimized, minimizedRoom, roomId]);
 
-  /** Profiller */
   const { user, profile, loadingProfile } = useUserProfile();
-
-  /** Oda */
   const { room, loadingRoom } = useRoomData(roomId as string);
 
-  /** Chat */
   const { messages } = useMessages(roomId as string);
   const { newMsg, setNewMsg, sendMessage } = useSendMessage(
     roomId as string,
@@ -52,7 +61,6 @@ export default function RoomPage() {
     profile
   );
 
-  /** YouTube Arama */
   const {
     ytQuery,
     setYtQuery,
@@ -62,7 +70,6 @@ export default function RoomPage() {
     selectVideo,
   } = useYoutubeSearch(roomId as string, user, room);
 
-  /** Oda Ayarları */
   const {
     newRoomName,
     setNewRoomName,
@@ -72,25 +79,28 @@ export default function RoomPage() {
     saving,
   } = useRoomSettings(roomId as string, room, user);
 
-  /** Presence */
   useRoomPresence(roomId as string, user, profile, disablePresence);
   useJoinMessage(roomId as string, user, profile, disablePresence);
 
-  /** UI State */
   const [showOnline, setShowOnline] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
   const [profilePopup, setProfilePopup] = useState<any>(null);
 
-  /** Kamera & Ses daveti popup'ları ayrı ayrı */
   const [cameraInvitePopup, setCameraInvitePopup] = useState(null);
   const [audioInvitePopup, setAudioInvitePopup] = useState(null);
 
-  /** Kamera & Ses davetlerini dinle */
+  const [showDonationSettings, setShowDonationSettings] = useState(false);
+
+  // ⭐ Toast controls
+  const [showToast, setShowToast] = useState(false);
+
+  // ⭐ Bağış event verisi
+  const [donationEvent, setDonationEvent] = useState<any>(null);
+
   useEffect(() => {
     if (!room || !user) return;
 
-    // 🎥 Kamera daveti
     if (
       room.invite &&
       room.invite.toUid === user.uid &&
@@ -99,7 +109,6 @@ export default function RoomPage() {
       setCameraInvitePopup(room.invite);
     }
 
-    // 🎤 Ses daveti
     if (
       room.audioInvite &&
       room.audioInvite.toUid === user.uid &&
@@ -109,7 +118,42 @@ export default function RoomPage() {
     }
   }, [room?.invite, room?.audioInvite, user]);
 
-  /** SSR Crash Fix */
+  /* ────────────────────────────────
+     ⭐ BAĞIŞ LİSTENER (Temiz)
+  ──────────────────────────────── */
+  useEffect(() => {
+    if (!user) return;
+
+    const q = query(
+      collection(db, "transactions"),
+      where("toUid", "==", user.uid),
+      orderBy("timestamp", "desc"),
+      limit(1)
+    );
+
+    const unsub = onSnapshot(q, (snap) => {
+      snap.docChanges().forEach((change) => {
+        if (change.type !== "added") return;
+
+        const data = change.doc.data();
+
+        // ❗ Kendine gönderilen bağışı gösterme
+        if (data.fromUid === user.uid) return;
+
+        setDonationEvent({
+          fromName: data.fromName ?? "Bir kullanıcı",
+          fromAvatar: data.fromAvatar ?? "/user.png",
+          amount: data.amount,
+        });
+
+        setShowToast(false);
+        setTimeout(() => setShowToast(true), 50);
+      });
+    });
+
+    return () => unsub();
+  }, [user]);
+
   if (typeof window === "undefined") return null;
 
   if (loadingRoom || loadingProfile) {
@@ -138,19 +182,28 @@ export default function RoomPage() {
         backgroundRepeat: "no-repeat",
       }}
     >
+      {/* ⭐ Toast — gerçek veri ile */}
+      <VbDonationToast
+        visible={showToast}
+        fromName={donationEvent?.fromName}
+        fromAvatar={donationEvent?.fromAvatar}
+        amount={donationEvent?.amount}
+        onHide={() => setShowToast(false)}
+      />
 
       {/* ÜST BLOK */}
       <div className="flex-shrink-0 flex flex-col">
-
         <RoomHeader
           room={room}
           user={user}
           onOnlineClick={() => setShowOnline(true)}
           onSearchClick={() => setShowSearch(true)}
           onEditClick={() => setShowEdit(true)}
+          onDonationClick={() => setShowDonationSettings(true)}
         />
 
-        {/* YouTube + Kamera */}
+        <DonationBar roomId={roomId as string} />
+
         <YoutubeSection room={room} user={user} roomId={roomId as string} />
         <CameraSection room={room} user={user} roomId={roomId as string} />
       </div>
@@ -171,7 +224,6 @@ export default function RoomPage() {
         />
       </div>
 
-      {/* MODALS */}
       <OnlineUsers
         visible={showOnline}
         room={room}
@@ -201,7 +253,6 @@ export default function RoomPage() {
         onClose={() => setShowSearch(false)}
       />
 
-      {/* Profil popup */}
       {profilePopup && (
         <ProfilePopup
           user={profilePopup}
@@ -210,7 +261,6 @@ export default function RoomPage() {
         />
       )}
 
-      {/* 🎥 Kamera Daveti Popup */}
       {cameraInvitePopup && (
         <CameraInvite
           invite={cameraInvitePopup}
@@ -220,7 +270,6 @@ export default function RoomPage() {
         />
       )}
 
-      {/* 🎤 Ses Daveti Popup */}
       {audioInvitePopup && (
         <AudioInvite
           invite={audioInvitePopup}
@@ -230,6 +279,12 @@ export default function RoomPage() {
         />
       )}
 
+      <DonationSettingsModal
+        roomId={roomId as string}
+        room={room}
+        visible={showDonationSettings}
+        onClose={() => setShowDonationSettings(false)}
+      />
     </div>
   );
 }

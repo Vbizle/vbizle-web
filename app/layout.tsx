@@ -3,13 +3,13 @@
 import { useEffect, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "@/firebase/firebaseConfig";
-import BottomBar from "@/components/BottomBar";
+import BottomBar from "@/app/components/BottomBar";
 import "./globals.css";
 import { usePathname, useRouter } from "next/navigation";
 
 import AuthProvider from "./providers/AuthProvider";
 import { RoomProvider } from "./providers/RoomProvider";
-import MiniRoomBubble from "@/components/MiniRoomBubble";
+import MiniRoomBubble from "@/app/components/MiniRoomBubble";
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<any>(undefined);

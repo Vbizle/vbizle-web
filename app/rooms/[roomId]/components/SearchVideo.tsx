@@ -13,7 +13,24 @@ export default function SearchVideo({
   if (!visible) return null;
 
   return (
-    <div className="absolute z-[9999] top-16 right-20 bg-neutral-900 p-4 rounded-xl w-80 border border-white/10 shadow-xl">
+    <div
+      className="
+        absolute 
+        z-[9999] 
+        top-16 
+        right-2                /* 🔵 SAĞA TAM YASLANDI */
+        bg-neutral-900 
+        p-4 
+        rounded-xl 
+        w-80 
+        border 
+        border-white/10 
+        shadow-xl
+      "
+      style={{
+        maxWidth: "90%",       /* 🔵 Mobilde taşma olmasın */
+      }}
+    >
       {/* Header */}
       <div className="flex items-center justify-between mb-3">
         <h3 className="font-semibold">Video Ara</h3>
@@ -49,8 +66,7 @@ export default function SearchVideo({
 
         {ytResults.map((v: any) => (
           <div
-            // 🔥 Unique key fix — videoId yoksa etag kullanılır
-            key={v.id?.videoId || v.etag}
+            key={v.id?.videoId || v.etag} // 🔥 Key fix
             onClick={() => {
               if (v.id?.videoId) selectVideo(v.id.videoId);
             }}

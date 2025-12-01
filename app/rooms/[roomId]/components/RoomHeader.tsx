@@ -12,6 +12,7 @@ export default function RoomHeader({
   onOnlineClick,
   onSearchClick,
   onEditClick,
+  onDonationClick,   // 🔵 EKLENDİ
 }) {
   const { minimizeRoom, clearRoom } = useRoomState();
 
@@ -75,13 +76,29 @@ export default function RoomHeader({
         <h2 className="text-lg font-semibold">{room.name}</h2>
       </div>
 
+      {/* 👉 SAĞ TARAF İKONLARI */}
       <div className="flex items-center gap-4">
+
+        {/* 🔍 Arama (Sadece Owner) */}
         {user.uid === room.ownerId && (
           <button onClick={onSearchClick}>🔍</button>
         )}
 
+        {/* 👥 Online */}
         <button onClick={onOnlineClick}>👥 {room.onlineCount}</button>
 
+        {/* 💰 Bağış Ayarları — X'ten hemen önce — sadece owner */}
+        {user.uid === room.ownerId && (
+          <button
+            onClick={onDonationClick}   // 🔵 EKLENDİ
+            className="text-xl hover:scale-110 transition"  // 🔵 EKLENDİ
+            title="Bağış Ayarları"      // 🔵 EKLENDİ
+          >
+            💰
+          </button>
+        )}
+
+        {/* ❌ Kapat */}
         <button
           onClick={() => setShowExitPopup(true)}
           className="text-2xl text-red-500"

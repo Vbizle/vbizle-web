@@ -47,7 +47,7 @@ export default function CameraSlot({
       v.style.width = "100%";
       v.style.height = "100%";
       v.style.objectFit = "cover";
-      v.style.transform = isSelf ? "scaleX(-1)" : "none";
+      v.style.transform = "scaleX(-1)";
 
       container.appendChild(v);
     }

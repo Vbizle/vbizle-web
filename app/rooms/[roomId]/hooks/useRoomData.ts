@@ -16,7 +16,7 @@ export function useRoomData(roomId: string) {
 
     const refRoom = doc(db, "rooms", roomId);
 
-    const unsub = onSnapshot(refRoom, (snap) => {
+    const unsub = onSnapshot(refRoom, async (snap) => {
       if (!active) return; // 👈 component kapanmışsa ignore et
 
       if (!snap.exists()) {
@@ -26,6 +26,27 @@ export function useRoomData(roomId: string) {
       }
 
       const d = snap.data();
+
+      // 🔵 BAĞIŞ ALANLARINI OTOMATİK EKLEME
+      const missing: any = {};
+
+      if (d.donationBarEnabled === undefined)
+        missing.donationBarEnabled = false;
+
+      if (d.donationTitle === undefined)
+        missing.donationTitle = "1. Koltuk için bağış";
+
+      if (d.donationTarget === undefined)
+        missing.donationTarget = 500;
+
+      if (d.donationCurrent === undefined)
+        missing.donationCurrent = 0;
+
+      // Eksik alan varsa Firestore'a yaz
+      if (Object.keys(missing).length > 0) {
+        console.log("🔧 Bağış alanları eksik → Firestore'a otomatik ekleniyor:", missing);
+        await updateDoc(refRoom, missing);
+      }
 
       // room verisini yaz
       setRoom({ roomId, ...d });

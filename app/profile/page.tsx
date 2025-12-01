@@ -13,10 +13,11 @@ export default function ProfilePage() {
   const router = useRouter();
   const user = auth.currentUser;
 
-  const { clearRoom } = useRoomState(); // 🔥 minimize state’i sıfırlamak için
+  const { clearRoom } = useRoomState();
 
   const [username, setUsername] = useState("");
   const [avatar, setAvatar] = useState("");
+  const [vbId, setVbId] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -38,6 +39,7 @@ export default function ProfilePage() {
         const data = snap.data();
         setUsername(data.username || "");
         setAvatar(data.avatar || "");
+        setVbId(data.vbId || "");
       }
 
       setLoading(false);
@@ -56,15 +58,12 @@ export default function ProfilePage() {
     setUploading(true);
 
     const storageRef = ref(storage, `avatars/${user.uid}/${Date.now()}.jpg`);
-
     await uploadBytes(storageRef, file);
-    const downloadURL = await getDownloadURL(storageRef);
 
+    const downloadURL = await getDownloadURL(storageRef);
     setAvatar(downloadURL);
 
-    await updateDoc(doc(db, "users", user.uid), {
-      avatar: downloadURL,
-    });
+    await updateDoc(doc(db, "users", user.uid), { avatar: downloadURL });
 
     setUploading(false);
   }
@@ -87,29 +86,22 @@ export default function ProfilePage() {
   }
 
   // ---------------------------------------------------
-  // 🔥 ÇIKIŞ YAP BUTONU
+  // 🔥 ÇIKIŞ YAP
   // ---------------------------------------------------
   async function logout() {
     try {
-      // minimize edilen odayı temizle
       clearRoom();
-
-      // firebase logout
       await auth.signOut();
-
-      // login sayfasına yönlendir
       router.replace("/login");
     } catch (err) {
       console.error("Logout error:", err);
     }
   }
 
-  if (loading) {
-    return <p className="text-center mt-20">Yükleniyor...</p>;
-  }
+  if (loading) return <p className="text-center mt-20">Yükleniyor...</p>;
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-4">
+    <div className="min-h-screen flex flex-col items-center justify-start pt-12 pb-10 px-4">
       <div className="max-w-md w-full bg-white/5 p-8 rounded-xl border border-white/10 shadow-lg">
 
         <h1 className="text-3xl font-bold mb-8 text-center">Profilim</h1>
@@ -120,6 +112,11 @@ export default function ProfilePage() {
             src={avatar || "/default-avatar.png"}
             className="w-28 h-28 rounded-full object-cover border border-white/20"
           />
+
+          {/* 🔥 VB-ID BURADA */}
+          <p className="mt-2 text-sm text-white font-semibold">
+            {vbId ? `ID: ${vbId}` : ""}
+          </p>
 
           <label
             htmlFor="avatarUpload"
@@ -156,7 +153,6 @@ export default function ProfilePage() {
           </button>
         </div>
 
-        {/* 🔥 ÇIKIŞ YAP BUTONU */}
         <button
           onClick={logout}
           className="mt-6 w-full bg-red-600 hover:bg-red-700 py-3 rounded-lg font-semibold"
