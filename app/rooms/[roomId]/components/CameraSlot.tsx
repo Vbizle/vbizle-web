@@ -22,19 +22,20 @@ export default function CameraSlot({
   const [showControls, setShowControls] = useState(false);
 
   /* -------------------------------------------------------
-     🔥 MOBİL FIX: play() zorunlu, muted autoplay
+     🔥 ZORUNLU MOBİL FIX — autoplay + unmute
   ------------------------------------------------------- */
-  async function forcePlay(video: HTMLVideoElement) {
+  async function safePlay(video: HTMLVideoElement) {
     try {
       await video.play();
-    } catch (err) {
-      console.warn("🔇 Video play bloklandı, tekrar denenecek...", err);
-      setTimeout(() => video.play().catch(() => {}), 300);
+    } catch {
+      setTimeout(() => {
+        video.play().catch(() => {});
+      }, 300);
     }
   }
 
   /* -------------------------------------------------------
-     🔥 TRACK CHANGE → DOM CLEAN + REATTACH
+     🔥 ANA FIX — Tüm cihazlarda %100 senkron track attach
   ------------------------------------------------------- */
   useEffect(() => {
     const container = containerRef.current;
@@ -42,39 +43,39 @@ export default function CameraSlot({
 
     const activeTrack = isSelf ? localTrack : remoteTrack;
 
-    // Kamera kapalıysa video görünmez ama DOM'da kalır (autoplay için gerekir)
-    if (!activeTrack || !cameraOn) {
-      if (videoRef.current) {
-        videoRef.current.style.display = "none";
-      }
+    // Kamera kapalıysa video gizle
+    if (!cameraOn || !activeTrack) {
+      if (videoRef.current) videoRef.current.style.display = "none";
       return;
     }
 
     // Video element yoksa oluştur
     if (!videoRef.current) {
       const v = document.createElement("video");
-      videoRef.current = v;
 
       v.autoplay = true;
       v.playsInline = true;
-      v.muted = true; // mobil autoplay fix
+      v.muted = true; // autoplay için zorunlu
       v.style.width = "100%";
       v.style.height = "100%";
       v.style.objectFit = "cover";
       v.style.transform = "scaleX(-1)";
 
       container.appendChild(v);
+      videoRef.current = v;
     }
 
     const video = videoRef.current;
 
-    // Eski track detach
+    // Tüm eski track bağlantılarını temizle
     try {
       localTrack?.detach(video);
+    } catch {}
+    try {
       remoteTrack?.detach(video);
     } catch {}
 
-    // Yeni track attach
+    // Yeni track'i bağla
     try {
       activeTrack.attach(video);
       video.style.display = "block";
@@ -82,19 +83,19 @@ export default function CameraSlot({
       console.warn("Video attach error:", err);
     }
 
-    // 🔥 Play'i zorla (MOBİL CRITICAL FIX)
-    forcePlay(video);
+    // Zorunlu play (mobil)
+    safePlay(video);
 
-    // İlk play sonrası muted kaldır (sadece self hariç)
+    // Self değilse 200ms sonra unmute
     if (!isSelf) {
       setTimeout(() => {
         video.muted = false;
-      }, 300);
+      }, 200);
     }
 
     return () => {
       try {
-        activeTrack?.detach(video);
+        activeTrack.detach(video);
       } catch {}
     };
   }, [localTrack, remoteTrack, cameraOn, isSelf]);
