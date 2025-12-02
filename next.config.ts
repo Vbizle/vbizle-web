@@ -3,16 +3,8 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   reactStrictMode: false,
 
-  // ❗ Burayı sildik (eski deneysel ayar hata çıkarıyordu)
-  experimental: {},
-
-  // ❗ Build sırasında TS & ESLint hatalarını ignore et
-  typescript: {
-    ignoreBuildErrors: true,
-  },
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
+  typescript: { ignoreBuildErrors: true },
+  eslint: { ignoreDuringBuilds: true },
 
   async headers() {
     return [
@@ -21,26 +13,30 @@ const nextConfig: NextConfig = {
         headers: [
           {
             key: "Permissions-Policy",
-            value: [
-              "camera=(self *)",
-              "microphone=(self *)",
-              "display-capture=(self *)",
-              // 🔥 Mobil tarayıcıların LiveKit video/ses başlatması için gerekli
-              "screen-wake-lock=(self *)",
-            ].join(", "),
+            value:
+              // 🔥 ÇOK ÖNEMLİ — self + domain ekliyoruz
+              "camera=(self https://vbizle-web.onrender.com), microphone=(self https://vbizle-web.onrender.com), display-capture=(self)"
           },
           {
             key: "Referrer-Policy",
-            value: "strict-origin-when-cross-origin",
+            value: "strict-origin-when-cross-origin"
           },
           {
             key: "X-Content-Type-Options",
-            value: "nosniff",
+            value: "nosniff"
           },
-        ],
-      },
+          {
+            key: "Cross-Origin-Opener-Policy",
+            value: "same-origin"
+          },
+          {
+            key: "Cross-Origin-Embedder-Policy",
+            value: "require-corp"
+          }
+        ]
+      }
     ];
-  },
+  }
 };
 
 export default nextConfig;
