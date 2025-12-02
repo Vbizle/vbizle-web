@@ -29,10 +29,8 @@ import { useRoomState } from "@/app/providers/RoomProvider";
 import DonationBar from "./components/DonationBar";
 import DonationSettingsModal from "./components/DonationSettingsModal";
 
-// ⭐ Toast
 import VbDonationToast from "@/app/components/VbDonationToast";
 
-// ⭐ Firestore listener
 import {
   collection,
   query,
@@ -92,12 +90,14 @@ export default function RoomPage() {
 
   const [showDonationSettings, setShowDonationSettings] = useState(false);
 
-  // ⭐ Toast controls
+  // TOAST CONTROL
   const [showToast, setShowToast] = useState(false);
-
-  // ⭐ Bağış event verisi
   const [donationEvent, setDonationEvent] = useState<any>(null);
 
+  /* ────────────────────────────────
+     ⭐ KAMERA / SES DAVETİ
+     (Hiç Değiştirilmedi → Sorunsuz Çalışır)
+  ──────────────────────────────── */
   useEffect(() => {
     if (!room || !user) return;
 
@@ -119,14 +119,16 @@ export default function RoomPage() {
   }, [room?.invite, room?.audioInvite, user]);
 
   /* ────────────────────────────────
-     ⭐ BAĞIŞ LİSTENER (Temiz)
+     ⭐ BAĞIŞ LİSTENER — FİNAL
+     → Tüm oda görür
+     → Alıcı adı/avatarı gelir
   ──────────────────────────────── */
   useEffect(() => {
-    if (!user) return;
+    if (!roomId) return;
 
     const q = query(
       collection(db, "transactions"),
-      where("toUid", "==", user.uid),
+      where("roomId", "==", roomId),
       orderBy("timestamp", "desc"),
       limit(1)
     );
@@ -137,12 +139,12 @@ export default function RoomPage() {
 
         const data = change.doc.data();
 
-        // ❗ Kendine gönderilen bağışı gösterme
-        if (data.fromUid === user.uid) return;
-
+        // Eksik veri gelirse Toast çizilmiyor → Bu fix edildi
         setDonationEvent({
-          fromName: data.fromName ?? "Bir kullanıcı",
-          fromAvatar: data.fromAvatar ?? "/user.png",
+          fromName: data.fromName || "Kullanıcı",
+          fromAvatar: data.fromAvatar || "/user.png",
+          toName: data.toName || "Kullanıcı",
+          toAvatar: data.toAvatar || "/user.png",
           amount: data.amount,
         });
 
@@ -152,7 +154,7 @@ export default function RoomPage() {
     });
 
     return () => unsub();
-  }, [user]);
+  }, [roomId]);
 
   if (typeof window === "undefined") return null;
 
@@ -182,11 +184,13 @@ export default function RoomPage() {
         backgroundRepeat: "no-repeat",
       }}
     >
-      {/* ⭐ Toast — gerçek veri ile */}
+      {/* ⭐ TOAST: Gönderen + Alıcı + Miktar */}
       <VbDonationToast
         visible={showToast}
         fromName={donationEvent?.fromName}
         fromAvatar={donationEvent?.fromAvatar}
+        toName={donationEvent?.toName}
+        toAvatar={donationEvent?.toAvatar}
         amount={donationEvent?.amount}
         onHide={() => setShowToast(false)}
       />

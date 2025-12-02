@@ -17,6 +17,8 @@ export default function ChatSection({ messages, onUserClick }) {
     <div className="h-full overflow-y-auto p-3 space-y-2">
 
       {messages.map((m) => {
+
+        // ⭐ JOIN mesajı
         if (m.type === "join") {
           return (
             <div key={m.id} className="flex items-center gap-2 opacity-70">
@@ -28,6 +30,20 @@ export default function ChatSection({ messages, onUserClick }) {
           );
         }
 
+        // ⭐ PREMIUM VB GÖNDERİM MESAJI (EKLEDİĞİMİZ YER)
+        if (m.type === "system_vb") {
+          return (
+            <div
+              key={m.id}
+              className="flex items-center gap-2 bg-yellow-500/20 border border-yellow-500/30 
+                        p-2 rounded-xl text-yellow-300 text-[13px] font-semibold mx-2"
+            >
+              💸 {m.amount} VB gönderildi
+            </div>
+          );
+        }
+
+        // ⭐ Normal mesaj
         return (
           <div
             key={m.id}
@@ -43,10 +59,8 @@ export default function ChatSection({ messages, onUserClick }) {
             <img src={m.photo} className="w-8 h-8 rounded-full" />
 
             <div>
-              {/* Kullanıcı adı */}
               <div className="text-[13px] text-white/70">{m.name}</div>
 
-              {/* Mesaj */}
               <div className="text-[13px] text-white break-words">
                 {m.text}
               </div>

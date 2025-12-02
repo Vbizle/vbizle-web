@@ -18,28 +18,31 @@ export default function useLivekitRoom({ roomId, currentUid }: Props) {
     if (connectingRef.current) return;
 
     connectingRef.current = true;
-
     let cancelled = false;
 
     async function connect() {
       try {
-        // 🔥 TOKEN AL
-        const r = await fetch(
-          `${process.env.NEXT_PUBLIC_LIVEKIT_TOKEN_ENDPOINT}?room=${roomId}&identity=${currentUid}`
+        console.log("🔵 LiveKit TOKEN URL:", process.env.NEXT_PUBLIC_LK_TOKEN_URL);
+        console.log("🔵 room:", roomId, "identity:", currentUid);
+
+        // 🔥 TOKEN AL — DÜZELTİLMİŞ
+        const tokenRes = await fetch(
+          `${process.env.NEXT_PUBLIC_LK_TOKEN_URL}?room=${roomId}&identity=${currentUid}`
         );
-        if (!r.ok) {
+
+        if (!tokenRes.ok) {
+          console.error("❌ Token endpoint hata:", await tokenRes.text());
           connectingRef.current = false;
           return;
         }
 
-        const { token } = await r.json();
+        const { token } = await tokenRes.json();
 
         // 🔥 ROOM OLUŞTUR
         const room = new Room({
           adaptiveStream: true,
           dynacast: true,
           reconnectPolicy: {
-            // profesyonel reconnect
             maxRetries: 10,
             retryDelay: 1000,
           },
@@ -48,11 +51,11 @@ export default function useLivekitRoom({ roomId, currentUid }: Props) {
           },
         });
 
-        // 🔥 BAĞLAN
+        // 🔥 BAĞLAN — DÜZELTİLMİŞ
         await room.connect(process.env.NEXT_PUBLIC_LIVEKIT_URL!, token);
+
         if (cancelled) return;
 
-        // ID normalize
         room.on("participantConnected", (p) => {
           p.identity = p.identity?.toString() || "";
         });
@@ -60,15 +63,14 @@ export default function useLivekitRoom({ roomId, currentUid }: Props) {
           p.identity = p.identity?.toString() || "";
         });
 
-        // 🔥 OTOMATİK RECONNECT LOG
         room.on("reconnecting", () => {
           console.log("⚠ LiveKit reconnecting...");
         });
+
         room.on("reconnected", () => {
-          console.log("✅ LiveKit reconnected successfully");
+          console.log("✅ LiveKit reconnected");
         });
 
-        // 🔥 ARKA PLANDA OTOMATİK RESUME (disconnect DEĞİL)
         document.addEventListener("visibilitychange", () => {
           if (document.visibilityState === "visible") {
             try {
@@ -78,8 +80,10 @@ export default function useLivekitRoom({ roomId, currentUid }: Props) {
         });
 
         setLkRoom(room);
+
       } catch (err) {
         console.error("LiveKit Connect Error:", err);
+      } finally {
         connectingRef.current = false;
       }
     }
@@ -92,4 +96,4 @@ export default function useLivekitRoom({ roomId, currentUid }: Props) {
   }, [currentUid, roomId, lkRoom]);
 
   return { lkRoom };
-} 
+}

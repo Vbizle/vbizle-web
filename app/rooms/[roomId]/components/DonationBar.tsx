@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { db, auth } from "@/firebase/firebaseConfig";
-import { doc, onSnapshot, updateDoc } from "firebase/firestore";
-import SendVbModal from "@/app/components/SendVbModal"; // 🔥 burada modal import edildi
+import { doc, onSnapshot, updateDoc, getDoc } from "firebase/firestore"; // ← getDoc eklendi
+import SendVbModal from "@/app/components/SendVbModal";
 import { useVbWallet } from "@/app/hooks/useVbWallet";
 
 type Props = {
@@ -29,6 +29,9 @@ export default function DonationBar({ roomId }: Props) {
 
   const isOwner = user && state?.ownerId === user.uid;
 
+  // 🔥 Host profilini tutmak için state
+  const [ownerProfile, setOwnerProfile] = useState<any>(null);
+
   useEffect(() => {
     const ref = doc(db, "rooms", roomId);
 
@@ -39,6 +42,21 @@ export default function DonationBar({ roomId }: Props) {
 
     return () => unsub();
   }, [roomId]);
+
+  // 🔥 Owner profilini Firestore’dan al
+  useEffect(() => {
+    async function loadOwner() {
+      if (!state?.ownerId) return;
+
+      const ref = doc(db, "users", state.ownerId);
+      const snap = await getDoc(ref);
+      if (snap.exists()) {
+        setOwnerProfile(snap.data());
+      }
+    }
+
+    loadOwner();
+  }, [state?.ownerId]);
 
   if (loading || !state) return null;
   if (!state.donationBarEnabled && !isOwner) return null;
@@ -118,7 +136,8 @@ export default function DonationBar({ roomId }: Props) {
           onClose={() => setShowSend(false)}
           toUser={{
             uid: state.ownerId!,
-            name: "Host",
+            name: ownerProfile?.username || "Host",
+            avatar: ownerProfile?.avatar || null,   // 🔥 Avatar eklendi
           }}
           roomId={roomId}
           currentBalance={wallet?.vbBalance ?? 0}

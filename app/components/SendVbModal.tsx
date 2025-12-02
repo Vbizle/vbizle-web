@@ -10,6 +10,7 @@ import {
   addDoc,
   collection,
   serverTimestamp,
+  getDoc
 } from "firebase/firestore";
 
 type Props = {
@@ -36,74 +37,130 @@ export default function SendVbModal({
   const [customAmount, setCustomAmount] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
 
+  const [senderProfile, setSenderProfile] = useState<any>(null);
+
   useEffect(() => setMounted(true), []);
 
   const fromUid = auth.currentUser?.uid;
   const presetAmounts = [25, 50, 100, 1000];
 
+  // 🔥 Gönderen profilini al
+  useEffect(() => {
+    async function loadSender() {
+      if (!fromUid) return;
+
+      console.log("📌[SendVbModal] Profil yükleniyor → fromUid:", fromUid);
+
+      const ref = doc(db, "users", fromUid);
+      const snap = await getDoc(ref);
+
+      if (snap.exists()) {
+        console.log("📌[SendVbModal] Profil bulundu:", snap.data());
+        setSenderProfile(snap.data());
+      } else {
+        console.log("❌[SendVbModal] Profil bulunamadı!");
+      }
+    }
+
+    loadSender();
+  }, [fromUid]);
+
+  // ==================================================================
+  // 🔥 SEND — Premium Bağış Kayıt + Premium Chat Mesajı + Loglar
+  // ==================================================================
   async function send(amount: number) {
+    console.log("======================================");
+    console.log("💸 SEND VB ÇALIŞTI");
+    console.log("amount:", amount);
+    console.log("roomId:", roomId);
+    console.log("fromUid:", fromUid);
+    console.log("toUser:", toUser);
+    console.log("======================================");
+
     setErrorMsg("");
 
     if (!fromUid) return setErrorMsg("Giriş yapmalısınız!");
+    if (!toUser) return setErrorMsg("Kullanıcı bulunamadı!");
     if (amount <= 0) return;
-    if (currentBalance < amount)
-      return setErrorMsg("Yetersiz Vb para bakiyesi!");
+    if (currentBalance < amount) return setErrorMsg("Yetersiz bakiye!");
 
     setSending(true);
 
     try {
-      // Gönderen azalt
+      // 👤 Gönderen → Bakiye azalt
       await updateDoc(doc(db, "users", fromUid), {
         vbBalance: increment(-amount),
         vbTotalSent: increment(amount),
       });
 
-      // Alan artır
-      await updateDoc(doc(db, "users", toUser!.uid), {
+      // 👤 Alan → Bakiye arttır
+      await updateDoc(doc(db, "users", toUser.uid), {
         vbBalance: increment(amount),
         vbTotalReceived: increment(amount),
       });
 
-      // Transaction kaydı
+      console.log("📌 transactions kaydı ekleniyor...");
+
+      // ⭐ Transactions tablosu
       await addDoc(collection(db, "transactions"), {
         fromUid,
-        toUid: toUser!.uid,
-        fromName: auth.currentUser?.displayName ?? "Bilgi yok",
-        fromAvatar: auth.currentUser?.photoURL ?? "/user.png",
+        toUid: toUser.uid,
+        fromName: senderProfile?.username || "Kullanıcı",
+        fromAvatar: senderProfile?.avatar || "/user.png",
+        toName: toUser.name || "Kullanıcı",
+        toAvatar: toUser.avatar || "/user.png",
         amount,
         type: "vb_send",
-        roomId: roomId ?? null,
+        roomId: roomId || null,
         timestamp: serverTimestamp(),
       });
 
-      // ⭐⭐ CHAT'E SİSTEM MESAJI EKLE (EKLENDİ)
+      // ⭐ PREMIUM CHAT MESAJI — %100 çalışan final
       if (roomId) {
-        await addDoc(collection(db, "rooms", roomId, "chat"), {
-          type: "system_vb",
+        console.log("📌 Chat mesajı yazılıyor → Room:", roomId);
+
+        const chatRef = collection(db, "rooms", String(roomId), "chat");
+
+        await addDoc(chatRef, {
+          type: "vb_premium",
           fromUid,
-          toUid: toUser!.uid,
+          fromName: senderProfile?.username || "Kullanıcı",
+          fromAvatar: senderProfile?.avatar || "/user.png",
+
+          toUid: toUser.uid,
+          toName: toUser.name || "Kullanıcı",
+          toAvatar: toUser.avatar || "/user.png",
+
           amount,
-          text: `💸 ${amount} VB gönderildi`,
-          timestamp: serverTimestamp(),
+          text: `💸 ${amount} Vb gönderildi`,
+
+          createdAt: Date.now(), // Anında değer → listener kaçırmaz
+          timestamp: serverTimestamp()
         });
 
-        // Hedefte ilerleme
-        await updateDoc(doc(db, "rooms", roomId), {
-          donationCurrent: increment(amount),
-          hostEarn: increment(amount),
-        });
+        console.log("✅ PREMIUM CHAT MESAJI EKLENDİ!");
+      } else {
+        console.log("❌ roomId gelmedi → Chat mesajı gönderilemedi!");
       }
 
+      console.log("✅ SEND VB TAMAMLANDI");
       onClose();
+
     } catch (err) {
-      console.error(err);
+      console.error("🔥 SEND VB HATASI:", err);
       setErrorMsg("Bir hata oluştu!");
     } finally {
       setSending(false);
     }
   }
 
-  if (!mounted || !visible || !toUser) return null;
+  // Modal görünmüyorsa render etme
+  if (!mounted || !visible || !toUser) {
+    console.log("📌 MODAL RENDER ETMİYOR:", { mounted, visible, toUser });
+    return null;
+  }
+
+  console.log("📌 MODAL AÇILDI → toUser:", toUser);
 
   return createPortal(
     <div className="fixed inset-0 flex items-center justify-center bg-black/70 z-[999999]">
@@ -130,8 +187,7 @@ export default function SendVbModal({
               key={amt}
               disabled={sending}
               onClick={() => send(amt)}
-              className="py-2 rounded-lg bg-purple-700 text-white font-semibold 
-              active:scale-95 transition disabled:opacity-40"
+              className="py-2 rounded-lg bg-purple-700 text-white font-semibold active:scale-95 transition disabled:opacity-40"
             >
               {amt} Vb
             </button>
@@ -143,15 +199,13 @@ export default function SendVbModal({
           placeholder="Özel miktar"
           value={customAmount}
           onChange={(e) => setCustomAmount(e.target.value)}
-          className="w-full p-2 rounded-lg bg-white/10 border border-white/20 
-          text-white mb-3 outline-none"
+          className="w-full p-2 rounded-lg bg-white/10 border border-white/20 text-white mb-3 outline-none"
         />
 
         <button
           disabled={sending || !customAmount}
           onClick={() => send(Number(customAmount))}
-          className="w-full py-2 rounded-lg bg-yellow-500 text-black font-semibold 
-          active:scale-95 disabled:opacity-40"
+          className="w-full py-2 rounded-lg bg-yellow-500 text-black font-semibold active:scale-95 disabled:opacity-40"
         >
           Gönder
         </button>

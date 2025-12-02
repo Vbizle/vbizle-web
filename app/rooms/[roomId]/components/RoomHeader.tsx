@@ -12,7 +12,7 @@ export default function RoomHeader({
   onOnlineClick,
   onSearchClick,
   onEditClick,
-  onDonationClick,   // 🔵 EKLENDİ
+  onDonationClick,
 }) {
   const { minimizeRoom, clearRoom } = useRoomState();
 
@@ -65,15 +65,23 @@ export default function RoomHeader({
   return (
     <header className="w-full border-b border-white/10 px-4 py-3 flex items-center justify-between relative">
 
+      {/* SOL TARAF — ODA RESMİ + ODA ADI + ODA ID */}
       <div
         onClick={onEditClick}
-        className="flex items-center gap-3 cursor-pointer"
+        className="flex flex-col cursor-pointer"
       >
-        <img
-          src={room.image || "/room-default.png"}
-          className="w-10 h-10 rounded-lg"
-        />
-        <h2 className="text-lg font-semibold">{room.name}</h2>
+        <div className="flex items-center gap-3">
+          <img
+            src={room.image || "/room-default.png"}
+            className="w-10 h-10 rounded-lg"
+          />
+          <h2 className="text-lg font-semibold">{room.name}</h2>
+        </div>
+
+        {/* 🔵 ODA ID — ÜSTTEKİ ÇÖZÜM: Artık HER ZAMAN görünür */}
+        <div className="text-white/50 text-sm mt-1 ml-1">
+          ID: {room?.roomNumber ?? "—"}
+        </div>
       </div>
 
       {/* 👉 SAĞ TARAF İKONLARI */}
@@ -87,12 +95,12 @@ export default function RoomHeader({
         {/* 👥 Online */}
         <button onClick={onOnlineClick}>👥 {room.onlineCount}</button>
 
-        {/* 💰 Bağış Ayarları — X'ten hemen önce — sadece owner */}
+        {/* 💰 Bağış Ayarları — sadece owner */}
         {user.uid === room.ownerId && (
           <button
-            onClick={onDonationClick}   // 🔵 EKLENDİ
-            className="text-xl hover:scale-110 transition"  // 🔵 EKLENDİ
-            title="Bağış Ayarları"      // 🔵 EKLENDİ
+            onClick={onDonationClick}
+            className="text-xl hover:scale-110 transition"
+            title="Bağış Ayarları"
           >
             💰
           </button>

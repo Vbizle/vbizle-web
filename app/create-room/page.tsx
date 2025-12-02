@@ -11,7 +11,8 @@ import {
   getDocs,
   doc,
   getDoc,
-  setDoc
+  setDoc,
+  runTransaction,
 } from "firebase/firestore";
 import {
   ref,
@@ -28,6 +29,9 @@ export default function CreateRoomPage() {
   const [preview, setPreview] = useState("");
   const [loading, setLoading] = useState(false);
 
+  // -------------------------------
+  // KULLANICI DOKÜMANI OLUŞTUR
+  // -------------------------------
   useEffect(() => {
     if (!user) return;
 
@@ -47,13 +51,41 @@ export default function CreateRoomPage() {
     ensureUserDoc();
   }, [user]);
 
-  async function handleSelectFile(e: any) {
+  function handleSelectFile(e: any) {
     const file = e.target.files?.[0];
     if (!file) return;
     setImageFile(file);
     setPreview(URL.createObjectURL(file));
   }
 
+  // ==========================================================
+  //  ODAYA OTOMATİK NUMARA VEREN TRANSACTION (100,101,102…)
+  // ==========================================================
+  async function getNextRoomNumber() {
+    const counterRef = doc(db, "_counters", "roomCounter");
+
+    const next = await runTransaction(db, async (tx) => {
+      const snap = await tx.get(counterRef);
+
+      if (!snap.exists()) {
+        // İlk kez çalışıyor → 100'den başla
+        tx.set(counterRef, { last: 100 });
+        return 100;
+      }
+
+      const last = snap.data().last || 100;
+      const newNumber = last + 1;
+
+      tx.update(counterRef, { last: newNumber });
+      return newNumber;
+    });
+
+    return next;
+  }
+
+  // ==========================================================
+  // ODA OLUŞTUR
+  // ==========================================================
   async function handleCreateRoom(e: any) {
     e.preventDefault();
     if (!roomName) return alert("Oda ismi gerekli!");
@@ -61,6 +93,7 @@ export default function CreateRoomPage() {
     setLoading(true);
 
     try {
+      // Kullanıcının zaten odası var mı?
       const check = query(
         collection(db, "rooms"),
         where("ownerId", "==", user!.uid)
@@ -73,24 +106,34 @@ export default function CreateRoomPage() {
         return router.push(`/rooms/${roomId}`);
       }
 
+      // Resim yükle
       let imageUrl = "";
       if (imageFile) {
-        const storageRef = ref(storage, `roomImages/${user!.uid}/${Date.now()}.jpg`);
+        const storageRef = ref(
+          storage,
+          `roomImages/${user!.uid}/${Date.now()}.jpg`
+        );
         await uploadBytes(storageRef, imageFile);
         imageUrl = await getDownloadURL(storageRef);
       }
 
-      // 🔥 Host bilgilerini Firestore'dan çek
+      // Host bilgisi
       const uref = doc(db, "users", user!.uid);
       const userSnap = await getDoc(uref);
 
       const hostName = userSnap.exists() ? userSnap.data().username : "Host";
       const hostAvatar = userSnap.exists() ? userSnap.data().avatar : "/user.png";
 
+      // ⭐️ OTOMATİK ODA NUMARASI AL
+      const roomNumber = await getNextRoomNumber();
+
+      // Oda oluştur
       const roomRef = await addDoc(collection(db, "rooms"), {
         name: roomName,
         image: imageUrl,
         ownerId: user!.uid,
+
+        roomNumber, // ⭐ ARTIK VAR — 100, 101, 102…
 
         onlineUsers: [user!.uid],
         onlineCount: 1,
@@ -105,7 +148,6 @@ export default function CreateRoomPage() {
         guestState: { camera: false, mic: false },
         guestSeat: null,
 
-        // ⭐ SLOT İÇİN CRITICAL ALANLAR
         hostName,
         hostAvatar,
         guestName: null,
@@ -115,7 +157,6 @@ export default function CreateRoomPage() {
       });
 
       router.push(`/rooms/${roomRef.id}`);
-
     } catch (err) {
       console.error("Room error:", err);
     }
