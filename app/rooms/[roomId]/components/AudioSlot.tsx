@@ -18,6 +18,20 @@ export default function AudioSlot({
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   /* -------------------------------------------------------
+     🔥 MOBİL / AUTOPLAY FIX — play() zorla
+  -------------------------------------------------------- */
+  async function forcePlay(el: HTMLAudioElement) {
+    try {
+      await el.play();
+    } catch (err) {
+      console.warn("🔇 Audio play bloklandı, yeniden deneniyor...", err);
+      setTimeout(() => {
+        el.play().catch(() => {});
+      }, 300);
+    }
+  }
+
+  /* -------------------------------------------------------
      🔥 PROFESSIONAL AUDIO ATTACH / DETACH PIPELINE
      (TikTok/Bigo seviyesinde)
   -------------------------------------------------------- */
@@ -31,13 +45,17 @@ export default function AudioSlot({
       el.autoplay = true;
       el.playsInline = true;
       el.style.display = "none";
+
+      // 🔊 Ses BEKLENİYOR (voice chat) → muted=false
+      el.muted = false;
+
       document.body.appendChild(el);
       audioRef.current = el;
     }
 
     const el = audioRef.current;
 
-    // Eski detach
+    // Eski detach (farklı track'ten geldiyse)
     try {
       track.detach(el);
     } catch {}
@@ -46,6 +64,9 @@ export default function AudioSlot({
     try {
       track.attach(el);
     } catch {}
+
+    // 🔥 HER attach sonrası play() zorla
+    forcePlay(el);
 
     return () => {
       try {
@@ -64,7 +85,7 @@ export default function AudioSlot({
 
     const interval = setInterval(() => {
       const level = track.getMonitorLevel?.() || 0;
-      setTalking(level > 0.10); // threshold
+      setTalking(level > 0.1); // threshold
     }, 200);
 
     return () => clearInterval(interval);
@@ -74,7 +95,6 @@ export default function AudioSlot({
 
   return (
     <div className="flex flex-col items-center select-none gap-1">
-
       {/* -------------------------------------------------
            SES SLOTU (40px) + Konuşma animasyonu
       -------------------------------------------------- */}
