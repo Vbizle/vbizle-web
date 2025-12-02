@@ -10,7 +10,7 @@ import {
   addDoc,
   collection,
   serverTimestamp,
-  getDoc
+  getDoc,
 } from "firebase/firestore";
 
 type Props = {
@@ -44,6 +44,9 @@ export default function SendVbModal({
   const fromUid = auth.currentUser?.uid;
   const presetAmounts = [25, 50, 100, 1000];
 
+  // 🟦 MODAL AÇILDIĞINDA LOG
+  console.log("🟦 [MODAL] Açıldı → roomId:", roomId);
+
   // 🔥 Gönderen profilini al
   useEffect(() => {
     async function loadSender() {
@@ -66,11 +69,11 @@ export default function SendVbModal({
   }, [fromUid]);
 
   // ==================================================================
-  // 🔥 SEND — Premium Bağış Kayıt + Premium Chat Mesajı + Loglar
+  // 🔥 SEND — LOG EKLENMİŞ VERSİYON
   // ==================================================================
   async function send(amount: number) {
     console.log("======================================");
-    console.log("💸 SEND VB ÇALIŞTI");
+    console.log("💸 SEND VB TETİKLENDİ");
     console.log("amount:", amount);
     console.log("roomId:", roomId);
     console.log("fromUid:", fromUid);
@@ -88,21 +91,23 @@ export default function SendVbModal({
 
     try {
       // 👤 Gönderen → Bakiye azalt
+      console.log("🟨 Gönderen bakiyesi azaltılıyor...");
       await updateDoc(doc(db, "users", fromUid), {
         vbBalance: increment(-amount),
         vbTotalSent: increment(amount),
       });
 
-      // 👤 Alan → Bakiye arttır
+      // 👤 Alıcı → Bakiye arttır
+      console.log("🟨 Alıcı bakiyesi arttırılıyor...");
       await updateDoc(doc(db, "users", toUser.uid), {
         vbBalance: increment(amount),
         vbTotalReceived: increment(amount),
       });
 
-      console.log("📌 transactions kaydı ekleniyor...");
+      console.log("📌 Transactions kaydı ekleniyor...");
 
       // ⭐ Transactions tablosu
-      await addDoc(collection(db, "transactions"), {
+      const txRef = await addDoc(collection(db, "transactions"), {
         fromUid,
         toUid: toUser.uid,
         fromName: senderProfile?.username || "Kullanıcı",
@@ -115,7 +120,25 @@ export default function SendVbModal({
         timestamp: serverTimestamp(),
       });
 
-      // ⭐ PREMIUM CHAT MESAJI — %100 çalışan final
+      console.log("🟩 Transaction kaydedildi → ID:", txRef.id);
+
+      // ⭐ ODA BAĞIŞ BARINI GÜNCELLE — LOG
+      if (roomId) {
+        console.log("🟦 donationCurrent güncelleniyor → oda:", roomId);
+
+        const roomRef = doc(db, "rooms", String(roomId));
+        console.log("🟩 Güncellenecek Firestore yolu:", roomRef.path);
+
+        await updateDoc(roomRef, {
+          donationCurrent: increment(amount),
+        });
+
+        console.log("🟩 donationCurrent GÜNCELLENDİ!");
+      } else {
+        console.log("❌ roomId gelmedi → donationCurrent yazılamadı.");
+      }
+     
+      // ⭐ PREMIUM CHAT MESAJI
       if (roomId) {
         console.log("📌 Chat mesajı yazılıyor → Room:", roomId);
 
@@ -134,20 +157,17 @@ export default function SendVbModal({
           amount,
           text: `💸 ${amount} Vb gönderildi`,
 
-          createdAt: Date.now(), // Anında değer → listener kaçırmaz
-          timestamp: serverTimestamp()
+          createdAt: Date.now(),
+          timestamp: serverTimestamp(),
         });
 
         console.log("✅ PREMIUM CHAT MESAJI EKLENDİ!");
-      } else {
-        console.log("❌ roomId gelmedi → Chat mesajı gönderilemedi!");
       }
 
       console.log("✅ SEND VB TAMAMLANDI");
       onClose();
-
     } catch (err) {
-      console.error("🔥 SEND VB HATASI:", err);
+      console.error("🟥 SEND VB HATASI:", err);
       setErrorMsg("Bir hata oluştu!");
     } finally {
       setSending(false);

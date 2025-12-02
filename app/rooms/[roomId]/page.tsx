@@ -44,7 +44,7 @@ import { db } from "@/firebase/firebaseConfig";
 export default function RoomPage() {
   const { roomId } = useParams();
   const { minimizedRoom, isMinimized } = useRoomState();
-
+console.log("🟦 [RoomPage] roomId:", roomId);
   const disablePresence = useMemo(() => {
     return isMinimized && minimizedRoom?.roomId === roomId;
   }, [isMinimized, minimizedRoom, roomId]);

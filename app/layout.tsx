@@ -30,11 +30,19 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     return () => unsub();
   }, []);
 
+  // 🔥 Login değilken login-required sayfalarını engelle
   useEffect(() => {
     if (!loading && user === null && !isAuthPage) {
       router.replace("/login");
     }
   }, [user, loading, pathname, router]);
+
+  // 🔥 Giriş yapmış kullanıcı login/register sayfasına girdiyse yönlendir
+  useEffect(() => {
+    if (!loading && user && isAuthPage) {
+      router.replace("/");
+    }
+  }, [user, loading, pathname, router, isAuthPage]);
 
   if (loading) {
     return (
@@ -44,11 +52,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         </body>
       </html>
     );
-  }
-
-  if (user && isAuthPage) {
-    router.replace("/");
-    return null;
   }
 
   return (
@@ -73,6 +76,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
         <AuthProvider>
           <RoomProvider>
+
             {/* NAVBAR */}
             {user && !isRoomPage && !isDMPage && !isAuthPage && (
               <header className="w-full border-b border-white/10 p-4 flex justify-between 
@@ -94,6 +98,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             {user && !isRoomPage && !isDMPage && !isAuthPage && <BottomBar />}
           </RoomProvider>
         </AuthProvider>
+
       </body>
     </html>
   );
