@@ -2,8 +2,6 @@
 
 import { useEffect, useState } from "react";
 import {
-  RemoteParticipant,
-  TrackPublication,
   createLocalVideoTrack,
   createLocalAudioTrack,
 } from "livekit-client";
@@ -18,7 +16,7 @@ export default function useSlotTracks({
   audioSeat2,
 }) {
   /* --------------------------------------------------------
-     STATE
+     STATE — Slot based architecture
   -------------------------------------------------------- */
   const [localVideoTrack, setLocalVideoTrack] = useState(null);
   const [localAudioTrack, setLocalAudioTrack] = useState(null);
@@ -31,48 +29,55 @@ export default function useSlotTracks({
 
   const isHost = currentUid === hostUid;
   const isGuestSelf = currentUid === guestUid;
-  const isAudio1Self = currentUid === audioSeat1.uid;
-  const isAudio2Self = currentUid === audioSeat2.uid;
+  const isA1 = currentUid === audioSeat1.uid;
+  const isA2 = currentUid === audioSeat2.uid;
 
   /* --------------------------------------------------------
-     🔥 1) LOCAL TRACKS — stop yok, sadece enable değişir
+     1) LOCAL TRACKS — Camera + Mic (with AEC)
   -------------------------------------------------------- */
   async function ensureLocalTracks() {
     if (!lkRoom) return;
 
-    /* CAMERA */
-    const wantCamera = isHost
-      ? room.hostState?.camera
-      : isGuestSelf
-      ? room.guestState?.camera
-      : false;
+    /** CAMERA **/
+    const wantCam =
+      isHost
+        ? room.hostState?.camera
+        : isGuestSelf
+        ? room.guestState?.camera
+        : false;
 
-    if (wantCamera && !localVideoTrack) {
-      const v = await createLocalVideoTrack();
+    if (wantCam && !localVideoTrack) {
+      const v = await createLocalVideoTrack({
+        resolution: { width: 640, height: 360 },
+      });
       v.mediaStreamTrack.enabled = true;
 
       setLocalVideoTrack(v);
-      await lkRoom.localParticipant.publishTrack(v).catch(() => {});
+      lkRoom.localParticipant.publishTrack(v).catch(() => {});
     }
 
     if (localVideoTrack?.mediaStreamTrack) {
-      localVideoTrack.mediaStreamTrack.enabled = wantCamera;
+      localVideoTrack.mediaStreamTrack.enabled = wantCam;
     }
 
-    /* MICROPHONE */
+    /** MICROPHONE **/
     let wantMic = false;
 
     if (isHost) wantMic = room.hostState?.mic;
     else if (isGuestSelf) wantMic = room.guestState?.mic;
-    else if (isAudio1Self) wantMic = audioSeat1.mic && !audioSeat1.hostMute;
-    else if (isAudio2Self) wantMic = audioSeat2.mic && !audioSeat2.hostMute;
+    else if (isA1) wantMic = audioSeat1.mic && !audioSeat1.hostMute;
+    else if (isA2) wantMic = audioSeat2.mic && !audioSeat2.hostMute;
 
     if (wantMic && !localAudioTrack) {
-      const a = await createLocalAudioTrack();
-      a.mediaStreamTrack.enabled = true;
+      const a = await createLocalAudioTrack({
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      });
 
+      a.mediaStreamTrack.enabled = true;
       setLocalAudioTrack(a);
-      await lkRoom.localParticipant.publishTrack(a).catch(() => {});
+      lkRoom.localParticipant.publishTrack(a).catch(() => {});
     }
 
     if (localAudioTrack?.mediaStreamTrack) {
@@ -94,7 +99,18 @@ export default function useSlotTracks({
   ]);
 
   /* --------------------------------------------------------
-     🔥 2) REMOTE TRACKS — tüm video/audio bağlama
+     2) SLOT CHANGE → RESET REMOTE TRACKS
+     (Fixes: slot değişince görüntü güncellenmemesi)
+  -------------------------------------------------------- */
+  useEffect(() => {
+    setRemoteHostVideo(null);
+    setRemoteGuestVideo(null);
+    setAudio1Track(null);
+    setAudio2Track(null);
+  }, [hostUid, guestUid, audioSeat1.uid, audioSeat2.uid]);
+
+  /* --------------------------------------------------------
+     3) REMOTE TRACK SUBSCRIBE — Ultra Stable Mapping
   -------------------------------------------------------- */
   useEffect(() => {
     if (!lkRoom) return;
@@ -102,23 +118,23 @@ export default function useSlotTracks({
     function onSubscribed(track, pub, participant) {
       const id = participant.identity?.toString() || "";
 
+      /* ---- VIDEO ---- */
       if (track.kind === "video") {
         if (id === hostUid) setRemoteHostVideo(track);
         if (id === guestUid) setRemoteGuestVideo(track);
       }
 
+      /* ---- AUDIO ---- */
       if (track.kind === "audio") {
         const el = track.attach();
         el.autoplay = true;
         el.playsInline = true;
+        el.muted = false;
         el.style.display = "none";
         document.body.appendChild(el);
 
         if (id === audioSeat1.uid) setAudio1Track(track);
         if (id === audioSeat2.uid) setAudio2Track(track);
-
-        if (id === hostUid) setAudio1Track(track);
-        if (id === guestUid) setAudio2Track(track);
       }
     }
 
@@ -143,32 +159,26 @@ export default function useSlotTracks({
       lkRoom.off("trackSubscribed", onSubscribed);
       lkRoom.off("trackUnsubscribed", onUnsub);
     };
-  }, [lkRoom, audioSeat1, audioSeat2, hostUid, guestUid]);
+  }, [lkRoom, hostUid, guestUid, audioSeat1.uid, audioSeat2.uid]);
 
   /* --------------------------------------------------------
-     🔥 3) RECONNECT EVENT — kamera/mikrofon + remote geri bağla
+     4) RECONNECT SAFE RESTORE
   -------------------------------------------------------- */
   useEffect(() => {
     if (!lkRoom) return;
 
     function handleReconnected() {
-      console.log("🔥 useSlotTracks → RECONNECTED → Track sync");
-
-      // Local trackleri yeniden yayınla
       ensureLocalTracks();
 
-      // Remote tracklerin yeniden sync olması için reset
-      setRemoteHostVideo((prev) => prev);
-      setRemoteGuestVideo((prev) => prev);
-      setAudio1Track((prev) => prev);
-      setAudio2Track((prev) => prev);
+      setRemoteHostVideo((p) => p);
+      setRemoteGuestVideo((p) => p);
+
+      setAudio1Track((p) => p);
+      setAudio2Track((p) => p);
     }
 
     lkRoom.on("reconnected", handleReconnected);
-
-    return () => {
-      lkRoom.off("reconnected", handleReconnected);
-    };
+    return () => lkRoom.off("reconnected", handleReconnected);
   }, [lkRoom]);
 
   /* --------------------------------------------------------
