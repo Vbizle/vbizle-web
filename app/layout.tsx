@@ -10,6 +10,8 @@ import { usePathname, useRouter } from "next/navigation";
 import AuthProvider from "./providers/AuthProvider";
 import { RoomProvider } from "./providers/RoomProvider";
 import MiniRoomBubble from "@/app/components/MiniRoomBubble";
+// ✅ YENİ: UiProvider import
+import { UiProvider } from "./providers/UiProvider";
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<any>(undefined);
@@ -57,7 +59,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="tr">
       <body className="bg-black text-white min-h-screen">
-
         {/* GLOBAL YT PLAYER */}
         <div
           id="global-yt-player"
@@ -76,29 +77,32 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
         <AuthProvider>
           <RoomProvider>
+            {/* ✅ YENİ: Tüm UI’yi UiProvider içine aldık */}
+            <UiProvider>
+              {/* NAVBAR */}
+              {user && !isRoomPage && !isDMPage && !isAuthPage && (
+                <header
+                  className="w-full border-b border-white/10 p-4 flex justify-between 
+              w-full max-w-none md:max-w-6xl mx-auto"
+                >
+                  <h1 className="text-2xl font-bold">Vbizle</h1>
+                  <nav className="flex gap-6">
+                    <a href="/">Ana Sayfa</a>
+                    <a href="/rooms">Odalar</a>
+                  </nav>
+                </header>
+              )}
 
-            {/* NAVBAR */}
-            {user && !isRoomPage && !isDMPage && !isAuthPage && (
-              <header className="w-full border-b border-white/10 p-4 flex justify-between 
-              w-full max-w-none md:max-w-6xl mx-auto">
-                <h1 className="text-2xl font-bold">Vbizle</h1>
-                <nav className="flex gap-6">
-                  <a href="/">Ana Sayfa</a>
-                  <a href="/rooms">Odalar</a>
-                </nav>
-              </header>
-            )}
+              <main className="w-full max-w-none md:max-w-6xl mx-auto px-2 md:px-4 py-4">
+                {children}
+              </main>
 
-            <main className="w-full max-w-none md:max-w-6xl mx-auto px-2 md:px-4 py-4">
-              {children}
-            </main>
+              <MiniRoomBubble />
 
-            <MiniRoomBubble />
-
-            {user && !isRoomPage && !isDMPage && !isAuthPage && <BottomBar />}
+              {user && !isRoomPage && !isDMPage && !isAuthPage && <BottomBar />}
+            </UiProvider>
           </RoomProvider>
         </AuthProvider>
-
       </body>
     </html>
   );

@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { db } from "@/firebase/firebaseConfig";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
-import { useRoomState } from "@/app/providers/RoomProvider";
+import { useUiState } from "@/app/providers/UiProvider";
 
 export function useRoomPresence(
   roomId: string,
@@ -11,123 +11,83 @@ export function useRoomPresence(
   profile: any,
   disablePresence: boolean
 ) {
-  const { isMinimized, minimizedRoom } = useRoomState();
+  const { isMinimized, minimizedRoom } = useUiState();
 
   useEffect(() => {
     if (!roomId || !user || !profile) return;
 
-    const ref = doc(db, "rooms", roomId);
+    const currentUid = user.uid as string;
 
-    async function join() {
-      if (disablePresence) return;
+    async function joinCurrentRoom() {
+      if (disablePresence) return; // minimize modunda asla join yok
 
-      // 🔥 Küçültülmüş odadan geri dönüyorsa → join yok
-      if (isMinimized && minimizedRoom?.roomId === roomId) return;
-
+      const ref = doc(db, "rooms", roomId);
       const snap = await getDoc(ref);
       if (!snap.exists()) return;
 
-      const list = snap.data().onlineUsers ?? [];
+      const data = snap.data();
+      const list = Array.isArray(data.onlineUsers) ? data.onlineUsers : [];
 
-      // zaten varsa ekleme
-      if (list.some((u: any) => u.uid === user.uid)) return;
+      if (!list.some((u: any) => u.uid === currentUid)) {
+        const updated = [
+          ...list,
+          {
+            uid: currentUid,
+            name: profile.username,
+            photo: profile.avatar,
+          },
+        ];
 
-      const updated = [
-        ...list,
-        {
-          uid: user.uid,
-          name: profile.username,
-          photo: profile.avatar,
-        },
-      ];
-
-      await updateDoc(ref, {
-        onlineUsers: updated,
-        onlineCount: updated.length,
-      });
-
-      // 🔥 Bu kullanıcı son olarak hangi odaya girdi → kaydet
-      localStorage.setItem("lastRoomId", roomId);
-    }
-
-    // ============================================================
-    // 🔥 LEAVE — sadece 2 durumda çalışır:
-    // 1) Sekme/uygulama kapanınca
-    // 2) Kullanıcı başka bir odaya girince
-    // DM / profil / minimize → etkilemez
-    // ============================================================
-    async function leave() {
-      const last = localStorage.getItem("lastRoomId");
-
-      // ❗ Bu leave işlemi sadece "bu oda" için çalışmalı
-      if (last !== roomId) return;
-
-      const snap = await getDoc(ref);
-      if (!snap.exists()) return;
-
-      let list = snap.data().onlineUsers ?? [];
-
-      // kullanıcı zaten yok → çıkış yapma
-      if (!list.some((u: any) => u.uid === user.uid)) return;
-
-      const updated = list.filter((u: any) => u.uid !== user.uid);
-
-      await updateDoc(ref, {
-        onlineUsers: updated,
-        onlineCount: updated.length,
-      });
-
-      // 🔥 odadan tamamen çıktığını işaretle
-      localStorage.removeItem("lastRoomId");
-    }
-
-    join();
-
-    // ============================================================
-    // 🔥 SEKME / UYGULAMA KAPANIRSA leave() çalışır
-    // ============================================================
-    const handleUnload = () => {
-      leave();
-    };
-
-    window.addEventListener("beforeunload", handleUnload);
-    window.addEventListener("unload", handleUnload);
-
-    // ============================================================
-    // 🔥 Kullanıcı başka bir odaya girerse eskisinden çıkart
-    // ============================================================
-    const previousRoom = localStorage.getItem("lastRoomId");
-
-    if (previousRoom && previousRoom !== roomId) {
-      // önceki odadan çıkış yap
-      const prevRef = doc(db, "rooms", previousRoom);
-
-      getDoc(prevRef).then((s) => {
-        if (!s.exists()) return;
-
-        const prevList = s.data().onlineUsers ?? [];
-        const updated = prevList.filter((u: any) => u.uid !== user.uid);
-
-        updateDoc(prevRef, {
+        await updateDoc(ref, {
           onlineUsers: updated,
           onlineCount: updated.length,
         });
-      });
+      }
 
-      // kayıt yeni oda olarak güncellenir
+      // bu kullanıcı en son hangi odadaydı?
       localStorage.setItem("lastRoomId", roomId);
     }
 
-    // cleanup
-    return () => {
-      window.removeEventListener("beforeunload", handleUnload);
-      window.removeEventListener("unload", handleUnload);
-    };
+    async function leavePreviousRoomIfAny() {
+      const previousRoom = localStorage.getItem("lastRoomId");
+
+      // minimize/dm/profil gibi durumlarda dokunma
+      if (!previousRoom || previousRoom === roomId) return;
+
+      const prevRef = doc(db, "rooms", previousRoom);
+      const snap = await getDoc(prevRef);
+      if (!snap.exists()) return;
+
+      const data = snap.data();
+      const list = Array.isArray(data.onlineUsers) ? data.onlineUsers : [];
+      const updated = list.filter((u: any) => u.uid !== currentUid);
+
+      if (updated.length === list.length) return; // zaten yok
+
+      await updateDoc(prevRef, {
+        onlineUsers: updated,
+        onlineCount: updated.length,
+      });
+    }
+
+    // 1) Yeni odaya giriyorsan önce eski odadan düşür
+    leavePreviousRoomIfAny();
+
+    // 2) Minimize değil ve presence aktifse bu odaya join
+    if (!(isMinimized && minimizedRoom?.roomId === roomId) && !disablePresence) {
+      joinCurrentRoom();
+    }
+
+    // ❗ unmount'ta otomatik leave yok → sadece
+    // - yeni odaya girince
+    // - balondan X ile çıkınca
+    // Firestore'dan düşüyoruz.
+
   }, [
     roomId,
     user?.uid,
-    profile?.avatar,
     profile?.username,
+    profile?.avatar,
     disablePresence,
     isMinimized,
     minimizedRoom?.roomId,
