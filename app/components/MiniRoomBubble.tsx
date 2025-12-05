@@ -129,7 +129,7 @@ export default function MiniRoomBubble() {
         onClick={handleCloseBubble}
         className="
           absolute -top-5 -right-5
-          w-8 h-8 rounded-full 
+          w-5 h-5 rounded-full 
           bg-red-600 text-white text-xl 
           flex items-center justify-center
           shadow-xl border-2 border-white

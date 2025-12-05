@@ -14,7 +14,7 @@ import {
   serverTimestamp,
   setDoc,
   deleteDoc,
-  updateDoc
+  updateDoc,
 } from "firebase/firestore";
 
 import {
@@ -44,7 +44,7 @@ export default function DirectMessagePage() {
   const emojiButtonRef = useRef<HTMLButtonElement>(null);
 
   const [imageModal, setImageModal] = useState<string | null>(null);
-  const [showAvatar, setShowAvatar] = useState(false);
+  const [showAvatar] = useState(false);
 
   const [typing, setTyping] = useState(false);
   const [otherTyping, setOtherTyping] = useState(false);
@@ -52,9 +52,9 @@ export default function DirectMessagePage() {
 
   const storage = getStorage();
 
-  /* ------------------------------------------------------------------
-     1) ME
-  ------------------------------------------------------------------ */
+  /* ------------------------------------------------------ */
+  /* 1) ME                                                   */
+  /* ------------------------------------------------------ */
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
       if (!u) return router.push("/login");
@@ -70,9 +70,9 @@ export default function DirectMessagePage() {
     return () => unsub();
   }, []);
 
-  /* ------------------------------------------------------------------
-     2) OTHER USER
-  ------------------------------------------------------------------ */
+  /* ------------------------------------------------------ */
+  /* 2) OTHER USER                                          */
+  /* ------------------------------------------------------ */
   useEffect(() => {
     if (!uid) return;
 
@@ -85,7 +85,7 @@ export default function DirectMessagePage() {
           name: d.username,
           avatar: d.avatar,
           online: d.online ?? false,
-          lastSeen: d.lastSeen ?? null
+          lastSeen: d.lastSeen ?? null,
         });
       }
     }
@@ -93,22 +93,21 @@ export default function DirectMessagePage() {
     load();
   }, [uid]);
 
-  /* ------------------------------------------------------------------
-     3) CONVERSATION ID
-  ------------------------------------------------------------------ */
+  /* ------------------------------------------------------ */
+  /* 3) CONVERSATION ID                                     */
+  /* ------------------------------------------------------ */
   useEffect(() => {
     if (!me || !uid) return;
 
     const a = me.uid;
     const b = uid as string;
-
     const id = a < b ? `${a}_${b}` : `${b}_${a}`;
     setConvId(id);
   }, [me, uid]);
 
-  /* ------------------------------------------------------------------
-     4) RESET UNREAD
-  ------------------------------------------------------------------ */
+  /* ------------------------------------------------------ */
+  /* 4) UNREAD RESET                                        */
+  /* ------------------------------------------------------ */
   useEffect(() => {
     if (!convId || !me) return;
 
@@ -116,29 +115,29 @@ export default function DirectMessagePage() {
     setDoc(metaRef, { unread: { [me.uid]: 0 } }, { merge: true });
   }, [convId, me]);
 
-  /* ------------------------------------------------------------------
-     5) LOAD MESSAGES LIVE
-  ------------------------------------------------------------------ */
+  /* ------------------------------------------------------ */
+  /* 5) LIVE MESSAGES                                       */
+  /* ------------------------------------------------------ */
   useEffect(() => {
     if (!convId) return;
 
     const qRef = query(collection(db, "dm", convId, "messages"), orderBy("time"));
 
-    const unsub = onSnapshot(qRef, async (snap) => {
+    const unsub = onSnapshot(qRef, (snap) => {
       const arr = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
       setMessages(arr);
 
       setTimeout(() => {
         bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-      }, 100);
+      }, 50);
     });
 
     return () => unsub();
   }, [convId]);
 
-  /* ------------------------------------------------------------------
-     6) TYPING LISTENER
-  ------------------------------------------------------------------ */
+  /* ------------------------------------------------------ */
+  /* 6) TYPING LISTENER                                     */
+  /* ------------------------------------------------------ */
   useEffect(() => {
     if (!convId) return;
 
@@ -152,9 +151,9 @@ export default function DirectMessagePage() {
     return () => unsub();
   }, [convId, uid]);
 
-  /* ------------------------------------------------------------------
-     7) TYPING EMIT
-  ------------------------------------------------------------------ */
+  /* ------------------------------------------------------ */
+  /* 7) TYPING EMIT                                         */
+  /* ------------------------------------------------------ */
   function handleTyping() {
     if (!convId || !me) return;
 
@@ -174,9 +173,9 @@ export default function DirectMessagePage() {
     setDoc(refX, { typing: { [me.uid]: false } }, { merge: true });
   }
 
-  /* ------------------------------------------------------------------
-     8) SEND IMAGE
-  ------------------------------------------------------------------ */
+  /* ------------------------------------------------------ */
+  /* 8) SEND IMAGE                                          */
+  /* ------------------------------------------------------ */
   async function sendImage(e: any) {
     const file = e.target.files[0];
     if (!file || !convId || !me) return;
@@ -195,13 +194,13 @@ export default function DirectMessagePage() {
       lastMsg: "[Fotoğraf]",
       lastSender: me.uid,
       time: serverTimestamp(),
-      unread: { [uid]: 1, [me.uid]: 0 }
+      unread: { [uid]: 1, [me.uid]: 0 },
     });
   }
 
-  /* ------------------------------------------------------------------
-     9) SEND TEXT
-  ------------------------------------------------------------------ */
+  /* ------------------------------------------------------ */
+  /* 9) SEND TEXT                                           */
+  /* ------------------------------------------------------ */
   async function sendMessage() {
     if (!newMsg.trim()) return;
 
@@ -215,7 +214,7 @@ export default function DirectMessagePage() {
       lastMsg: newMsg,
       lastSender: me.uid,
       time: serverTimestamp(),
-      unread: { [uid]: 1, [me.uid]: 0 }
+      unread: { [uid]: 1, [me.uid]: 0 },
     });
 
     setNewMsg("");
@@ -225,16 +224,17 @@ export default function DirectMessagePage() {
     if (e.key === "Enter") sendMessage();
   }
 
-  /* ------------------------------------------------------------------
-     10) DELETE
-  ------------------------------------------------------------------ */
+  /* ------------------------------------------------------ */
+  /* 10) DELETE MESSAGE                                     */
+  /* ------------------------------------------------------ */
   async function deleteMessage(id: string) {
     await deleteDoc(doc(db, "dm", convId, "messages", id));
   }
 
-  /* ------------------------------------------------------------------
-     RENDER
-  ------------------------------------------------------------------ */
+  /* ------------------------------------------------------ */
+  /* RENDER UI                                              */
+  /* ------------------------------------------------------ */
+
   if (!me || !otherUser) {
     return (
       <div className="min-h-screen flex items-center justify-center text-lg text-white">
@@ -244,9 +244,9 @@ export default function DirectMessagePage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-black text-white overflow-hidden">
+    <div className="h-screen flex flex-col bg-black text-white overflow-hidden">
 
-      {/* HEADER */}
+      {/* HEADER (SABİT) */}
       <header className="w-full p-4 flex items-center gap-3 border-b border-white/10 bg-neutral-900 sticky top-0 z-50">
         <button onClick={() => router.back()} className="text-xl">←</button>
 
@@ -273,15 +273,15 @@ export default function DirectMessagePage() {
       {/* IMAGE FULLSCREEN */}
       {imageModal && (
         <div
-          className="fixed inset-0 bg-black/90 flex items-center justify-center z-50"
+          className="fixed inset-0 bg-black/90 flex items-center justify-center z-[99999]"
           onClick={() => setImageModal(null)}
         >
           <img src={imageModal} className="max-w-[90%] max-h-[90%] rounded-lg" />
         </div>
       )}
 
-      {/* MESSAGES */}
-      <div className="flex-1 p-4 overflow-y-auto">
+      {/* MESSAGES SCROLL AREA */}
+      <div className="flex-1 p-4 overflow-y-auto no-scrollbar pb-[80px]">
         {messages.map((m) => {
           const mine = m.uid === me.uid;
 
@@ -294,7 +294,6 @@ export default function DirectMessagePage() {
               }}
               className={`mb-3 flex ${mine ? "justify-end" : "justify-start"}`}
             >
-
               {m.imgUrl ? (
                 <img
                   src={m.imgUrl}
@@ -305,7 +304,7 @@ export default function DirectMessagePage() {
                 />
               ) : (
                 <div
-                  className={`px-4 py-2 rounded-xl max-w-xs relative ${
+                  className={`px-4 py-2 rounded-xl max-w-xs ${
                     mine
                       ? "bg-blue-600 text-white rounded-br-none"
                       : "bg-white/10 text-white rounded-bl-none"
@@ -321,8 +320,8 @@ export default function DirectMessagePage() {
         <div ref={bottomRef}></div>
       </div>
 
-      {/* SEND BAR — MODERN TASARIM */}
-      <div className="border-t border-white/10 px-3 py-3 flex items-center gap-2 bg-neutral-900">
+      {/* SEND BAR (SABİT + KLAVYE DOSTU) */}
+      <div className="bg-neutral-900 border-t border-white/10 px-3 py-3 flex items-center gap-2 sticky bottom-0 z-50 pb-[env(safe-area-inset-bottom)]">
 
         {/* FOTO */}
         <label className="w-11 h-11 bg-white/10 border border-white/20 rounded-xl flex items-center justify-center cursor-pointer text-xl">
@@ -352,7 +351,7 @@ export default function DirectMessagePage() {
           className="flex-1 h-11 px-3 rounded-xl bg-white/10 border border-white/20"
         />
 
-        {/* GÖNDER — ESTETİK */}
+        {/* SEND */}
         <button
           onClick={sendMessage}
           className="px-5 h-11 bg-blue-600 rounded-xl flex items-center justify-center text-sm font-semibold shadow-md active:scale-95 transition"
