@@ -12,7 +12,9 @@ export default function HomePage() {
   const [rooms, setRooms] = useState<any[]>([]);
   const [myRoomId, setMyRoomId] = useState<string | null>(null);
 
-  // Kullanıcının kendi odasını kontrol et
+  /* ---------------------------------------------------------
+     🔥 Kullanıcının kendi odasını kontrol et
+  --------------------------------------------------------- */
   useEffect(() => {
     if (!user) return;
 
@@ -30,19 +32,27 @@ export default function HomePage() {
     checkMyRoom();
   }, [user]);
 
-  // Sadece aktif odaları çek
+  /* ---------------------------------------------------------
+     🔥 Sadece aktif odaları çek
+  --------------------------------------------------------- */
   useEffect(() => {
     const q = query(collection(db, "rooms"), where("active", "==", true));
 
     const unsub = onSnapshot(q, (snap) => {
-      const list = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      let list = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+
+      // ⭐ Online kullanıcı sayısına göre sırala (yüksek → düşük)
+      list.sort((a, b) => (b.onlineCount || 0) - (a.onlineCount || 0));
+
       setRooms(list);
     });
 
     return () => unsub();
   }, []);
 
-  // ODA AÇMA / GIRME
+  /* ---------------------------------------------------------
+     🔥 Oda Açma
+  --------------------------------------------------------- */
   async function handleCreateRoom() {
     if (!user) {
       router.push("/login");
@@ -50,7 +60,6 @@ export default function HomePage() {
     }
 
     if (myRoomId) {
-      // Kapalıysa aktif et
       const ref = doc(db, "rooms", myRoomId);
       await updateDoc(ref, {
         active: true,
@@ -64,44 +73,62 @@ export default function HomePage() {
     }
   }
 
+  /* ---------------------------------------------------------
+     🔥 TASARIM (Mobil 2 sütun, scroll aktif)
+  --------------------------------------------------------- */
   return (
-    <div>
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Aktif Odalar</h1>
+    <div className="flex flex-col h-screen overflow-hidden">
 
-        <button
-          onClick={handleCreateRoom}
-          className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 transition font-semibold"
-        >
-          Oda Aç
-        </button>
+      {/* ⭐ ÜST SABİT BAR */}
+      <div className="p-4 bg-black border-b border-white/10 sticky top-0 z-50">
+        <div className="flex justify-between items-center">
+          <h1 className="text-xl font-bold text-white">Aktif Odalar</h1>
+
+          <button
+            onClick={handleCreateRoom}
+            className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 transition font-semibold"
+          >
+            Oda Aç
+          </button>
+        </div>
       </div>
 
-      {rooms.length === 0 && (
-        <p className="text-center text-white/60 mt-10">
-          Şu anda aktif oda yok.
-        </p>
-      )}
+      {/* ⭐ AŞAĞI KAYABİLİR LİSTE */}
+      <div
+        className="flex-1 overflow-y-auto px-4 py-4"
+        style={{ WebkitOverflowScrolling: "touch" }}
+      >
+        {rooms.length === 0 && (
+          <p className="text-center text-white/60 mt-10">
+            Şu anda aktif oda yok.
+          </p>
+        )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-        {rooms.map((room) => (
-          <a
-            key={room.id}
-            href={`/rooms/${room.id}`}
-            className="bg-white/5 border border-white/10 p-4 rounded-xl hover:bg-white/10 transition"
-          >
-            <img
-              src={room.image || "/default-room.jpg"}
-              className="w-full h-40 object-cover rounded-lg mb-4"
-            />
+        {/* ⭐ Mobilde 2 sütun — Web’de otomatik genişler */}
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
 
-            <h3 className="text-xl font-semibold">{room.name}</h3>
+          {rooms.map((room) => (
+            <a
+              key={room.id}
+              href={`/rooms/${room.id}`}
+              className="bg-white/5 border border-white/10 rounded-xl overflow-hidden hover:bg-white/10 transition"
+            >
+              {/* ⭐ Küçük kapak fotoğrafı */}
+              <img
+                src={room.image || "/default-room.jpg"}
+                className="w-full h-28 object-cover"
+              />
 
-            <p className="text-white/60 mt-2">
-              👥 {room.onlineCount} kişi online
-            </p>
-          </a>
-        ))}
+              <div className="p-3">
+                <h3 className="text-sm font-semibold">{room.name}</h3>
+                <p className="text-white/60 text-xs mt-1">
+                  👥 {room.onlineCount || 0} kişi online
+                </p>
+              </div>
+            </a>
+          ))}
+
+        </div>
       </div>
     </div>
   );

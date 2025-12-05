@@ -2,25 +2,60 @@
 @tailwind components;
 @tailwind utilities;
 
-/* === TWA tam ekran + kaydırma sorunu çözümü === */
-html, body {
-  width: 100%;
-  height: 100%;
-  margin: 0;
-  padding: 0;
+/* ======== GLOBAL MOBİL & TWA FİX ======== */
 
-  overflow: hidden !important;   /* Scroll tamamen kapansın */
-  overscroll-behavior: none !important;
-  background-color: #000;        /* Mobilde beyaz flash engeli */
+/* --- Scroll bar tamamen gizle --- */
+::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+* {
+  scrollbar-width: none !important;
 }
 
-/* Next.js root tam ekranı kaplasın */
+/* --- TWA tam ekran + beyaz flash engeli --- */
+html, body {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  background-color: #000;
+  overscroll-behavior: none !important;
+}
+
+/* --- Root tam ekran çalışsın (senin kodun korunuyor) --- */
 :root, body, html {
   height: 100% !important;
 }
 
-/* Pixel, Samsung, Xiaomi’de yukarı-aşağı hareketi yok eder */
+/* --- Eski kodunda body sabitti, her şeyi kilitliyordu ---
+     Artık SADECE oda içinde (fullscreen modunda) sabit olacak.
+     Dış sayfalarda (anasayfa, mesajlar, profil) scroll serbest olacak.
+*/
 body {
-  position: fixed;
+  position: relative !important;   /* Varsayılan normal scroll */
+  overflow: auto !important;
+}
+
+/* --- Oda içi FULLSCREEN iken scroll tamamen kapat --- */
+/* RoomProvider → <html class="room-open"> ekleyebiliriz */
+html.room-open body {
+  position: fixed !important;
   inset: 0;
+  overflow: hidden !important;
+}
+
+/* ======== MOBİL GÖRÜNÜM FİX ======== */
+img, video {
+  max-width: 100%;
+  height: auto;
+}
+
+button, a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* iPhone safe-area destek */
+:root {
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
 }

@@ -86,7 +86,7 @@ export default function ProfilePopup({ user, onClose, isOwner }: Props) {
   const handleSendDM = () => {
     minimizeRoom({
       roomId,
-      roomImage: userPhoto,
+      roomImage: roomData?.roomImage || "/room-default.png",
     });
 
     router.push(`/messages/dm/${user.uid}`);
