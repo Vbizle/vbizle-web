@@ -76,14 +76,21 @@ export default function AuthProvider({ children }: any) {
       // 🔥 Önce VB-ID ata (yoksa)
       await ensureSequentialVbId(u.uid);
 
-      // 🔥 Şimdi kullanıcıyı tekrar oku (vbId artık var)
+      // 🔥 Şimdi kullanıcıyı tekrar oku
       const meSnap = await getDoc(userRef);
+      const data = meSnap.data() || {};
+
+      // 🔥 Avatar fallback burada çözülüyor
+      const avatar =
+        data.avatar && data.avatar !== "" && data.avatar !== null
+          ? data.avatar
+          : "/default-avatar.png";
 
       setMe({
         uid: u.uid,
-        name: meSnap.data()?.username,
-        avatar: meSnap.data()?.avatar,
-        vbId: meSnap.data()?.vbId, // artık kesin var
+        name: data.username,
+        avatar,
+        vbId: data.vbId,
       });
 
       // Online yap

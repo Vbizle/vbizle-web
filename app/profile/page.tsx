@@ -5,162 +5,200 @@ import { auth, db, storage } from "@/firebase/firebaseConfig";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useRouter } from "next/navigation";
-
-// 🔥 RoomProvider state temizleme için
 import { useRoomState } from "@/app/providers/RoomProvider";
+
+import ProfileTopBar from "./ProfileTopBar";
+import ProfileHeader from "./ProfileHeader";
+import CoverEditModal from "./CoverEditModal";
+import FullscreenGallery from "./FullscreenGallery";
 
 export default function ProfilePage() {
   const router = useRouter();
   const user = auth.currentUser;
-
   const { clearRoom } = useRoomState();
 
   const [username, setUsername] = useState("");
   const [avatar, setAvatar] = useState("");
   const [vbId, setVbId] = useState("");
+  const [gallery, setGallery] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [uploading, setUploading] = useState(false);
 
-  // ---------------------------------------------------
-  // 🔥 PROFİL VERİLERİNİ YÜKLEME
-  // ---------------------------------------------------
+  const [usernameEdit, setUsernameEdit] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const [notice, setNotice] = useState("");
+
+  const [coverEditOpen, setCoverEditOpen] = useState(false);
+  const [fullScreenOpen, setFullScreenOpen] = useState(false);
+
+  // -------------------------
+  // PROFİLİ YÜKLEME
+  // -------------------------
   useEffect(() => {
     if (!user) {
       router.push("/login");
       return;
     }
 
-    async function loadProfile() {
+    async function load() {
       const refDoc = doc(db, "users", user.uid);
       const snap = await getDoc(refDoc);
 
       if (snap.exists()) {
-        const data = snap.data();
-        setUsername(data.username || "");
-        setAvatar(data.avatar || "");
-        setVbId(data.vbId || "");
+        const d: any = snap.data();
+        setUsername(d.username || "");
+        setAvatar(d.avatar || "");
+        setVbId(d.vbId || "");
+        setGallery(d.galleryPhotos || []);
       }
 
       setLoading(false);
     }
 
-    loadProfile();
-  }, [user]);
+    load();
+  }, [user, router]);
 
-  // ---------------------------------------------------
-  // 🔥 FOTOĞRAF YÜKLEME
-  // ---------------------------------------------------
-  async function handlePhotoUpload(e: any) {
-    const file = e.target.files[0];
+  // -------------------------
+  // AVATAR YÜKLEME
+  // -------------------------
+  async function handleAvatarUpload(e: any) {
+    const file = e.target.files?.[0];
     if (!file || !user) return;
 
-    setUploading(true);
-
-    const storageRef = ref(storage, `avatars/${user.uid}/${Date.now()}.jpg`);
-    await uploadBytes(storageRef, file);
-
-    const downloadURL = await getDownloadURL(storageRef);
-    setAvatar(downloadURL);
-
-    await updateDoc(doc(db, "users", user.uid), { avatar: downloadURL });
-
-    setUploading(false);
-  }
-
-  // ---------------------------------------------------
-  // 🔥 PROFİL KAYDETME
-  // ---------------------------------------------------
-  async function save() {
-    if (!user) return;
-
-    setSaving(true);
-
-    await updateDoc(doc(db, "users", user.uid), {
-      username,
-      updatedAt: Date.now(),
-    });
-
-    setSaving(false);
-    alert("Profil başarıyla güncellendi!");
-  }
-
-  // ---------------------------------------------------
-  // 🔥 ÇIKIŞ YAP
-  // ---------------------------------------------------
-  async function logout() {
     try {
-      clearRoom();
-      await auth.signOut();
-      router.replace("/login");
+      const storageRef = ref(storage, `avatars/${user.uid}/${Date.now()}.jpg`);
+      await uploadBytes(storageRef, file);
+      const url = await getDownloadURL(storageRef);
+
+      await updateDoc(doc(db, "users", user.uid), { avatar: url });
+      setAvatar(url);
+
+      setNotice("Profil fotoğrafı güncellendi!");
     } catch (err) {
-      console.error("Logout error:", err);
+      console.error(err);
+      setNotice("Profil fotoğrafı yüklenirken hata oluştu.");
+    } finally {
+      setTimeout(() => setNotice(""), 2000);
     }
   }
 
-  if (loading) return <p className="text-center mt-20">Yükleniyor...</p>;
+  // -------------------------
+  // KAPAK FOTOĞRAF YÜKLEME
+  // -------------------------
+  async function handleGalleryUpload(index: number, file: File) {
+    if (!user) return;
+
+    try {
+      const storageRef = ref(storage, `gallery/${user.uid}/${index}.jpg`);
+      await uploadBytes(storageRef, file);
+      const url = await getDownloadURL(storageRef);
+
+      const updated = [...gallery];
+      updated[index] = url;
+
+      await updateDoc(doc(db, "users", user.uid), {
+        galleryPhotos: updated,
+      });
+
+      setGallery(updated);
+      setNotice("Kapak fotoğrafı güncellendi!");
+    } catch (err) {
+      console.error(err);
+      setNotice("Kapak fotoğrafı yüklenirken hata oluştu.");
+    } finally {
+      setTimeout(() => setNotice(""), 2000);
+    }
+  }
+
+  // -------------------------
+  // USERNAME INLINE SAVE
+  // -------------------------
+  async function saveUsername() {
+    if (!user) return;
+
+    try {
+      setSaving(true);
+
+      await updateDoc(doc(db, "users", user.uid), {
+        username,
+        updatedAt: Date.now(),
+      });
+
+      setNotice("Kullanıcı adı güncellendi!");
+      setUsernameEdit(false);
+    } catch (err) {
+      console.error(err);
+      setNotice("Kullanıcı adı güncellenirken hata oluştu.");
+    } finally {
+      setSaving(false);
+      setTimeout(() => setNotice(""), 2000);
+    }
+  }
+
+  // -------------------------
+  // LOGOUT
+  // -------------------------
+  async function logout() {
+    clearRoom();
+    await auth.signOut();
+    router.replace("/login");
+  }
+
+  // -------------------------
+  // RENDER
+  // -------------------------
+  if (loading) {
+    return <p className="text-center mt-20 text-white">Yükleniyor...</p>;
+  }
+
+  const hasGallery = gallery.filter(Boolean).length > 0;
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-start pt-12 pb-10 px-4">
-      <div className="max-w-md w-full bg-white/5 p-8 rounded-xl border border-white/10 shadow-lg">
-
-        <h1 className="text-3xl font-bold mb-8 text-center">Profilim</h1>
-
-        {/* PROFİL FOTOĞRAF ALANI */}
-        <div className="flex flex-col items-center mb-6">
-          <img
-            src={avatar || "/default-avatar.png"}
-            className="w-28 h-28 rounded-full object-cover border border-white/20"
-          />
-
-          {/* 🔥 VB-ID BURADA */}
-          <p className="mt-2 text-sm text-white font-semibold">
-            {vbId ? `ID: ${vbId}` : ""}
-          </p>
-
-          <label
-            htmlFor="avatarUpload"
-            className="mt-3 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-sm cursor-pointer"
-          >
-            {uploading ? "Yükleniyor..." : "Fotoğraf Değiştir"}
-          </label>
-
-          <input
-            id="avatarUpload"
-            type="file"
-            className="hidden"
-            accept="image/*"
-            onChange={handlePhotoUpload}
-          />
+    <div className="relative min-h-screen flex flex-col items-center pt-12 px-4 text-white">
+      {/* Bildirim */}
+      {notice && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 bg-blue-600 px-4 py-2 rounded-lg z-50">
+          {notice}
         </div>
+      )}
 
-        {/* KULLANICI ADI */}
-        <div className="flex flex-col gap-2">
-          <label className="text-sm text-white/70">Kullanıcı Adı</label>
+      {/* Üst Bar (başlık + 3 çizgi) */}
+      <ProfileTopBar onLogout={logout} />
 
-          <input
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            className="p-3 rounded-lg bg-black/40 border border-white/20 outline-none"
-          />
-
-          <button
-            onClick={save}
-            className="mt-4 bg-green-600 hover:bg-green-700 py-3 rounded-lg font-semibold disabled:opacity-40"
-            disabled={saving}
-          >
-            {saving ? "Kaydediliyor..." : "Kaydet"}
-          </button>
-        </div>
-
-        <button
-          onClick={logout}
-          className="mt-6 w-full bg-red-600 hover:bg-red-700 py-3 rounded-lg font-semibold"
-        >
-          Çıkış Yap
-        </button>
-
+      {/* Kapak + Avatar + Kullanıcı Bilgileri */}
+      <div className="w-full max-w-md mt-4 flex flex-col items-center">
+        <ProfileHeader
+          avatar={avatar}
+          username={username}
+          vbId={vbId}
+          gallery={gallery}
+          usernameEdit={usernameEdit}
+          savingUsername={saving}
+          onAvatarChange={handleAvatarUpload}
+          onUsernameClick={() => setUsernameEdit(true)}
+          onUsernameChange={(val) => setUsername(val)}
+          onUsernameSave={saveUsername}
+          onCoverClick={() => {
+            if (hasGallery) setFullScreenOpen(true);
+          }}
+          onOpenCoverEdit={() => setCoverEditOpen(true)}
+        />
       </div>
+
+      {/* Kapak Fotoğrafları Düzenleme Modalı */}
+      <CoverEditModal
+        open={coverEditOpen}
+        gallery={gallery}
+        onClose={() => setCoverEditOpen(false)}
+        onSelectFile={handleGalleryUpload}
+      />
+
+      {/* Fullscreen Kapak Slider */}
+      <FullscreenGallery
+        open={fullScreenOpen}
+        gallery={gallery}
+        onClose={() => setFullScreenOpen(false)}
+      />
     </div>
   );
 }

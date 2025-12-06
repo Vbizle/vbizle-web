@@ -20,12 +20,17 @@ import {
   getDownloadURL
 } from "firebase/storage";
 
+// 🔥 WEB / APK ayırmak için
+const isNative =
+  typeof window !== "undefined" &&
+  !!(window as any).Capacitor?.isNativePlatform;
+
 export default function CreateRoomPage() {
   const router = useRouter();
   const user = auth.currentUser;
 
   const [roomName, setRoomName] = useState("");
-  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imageFile, setImageFile] = useState<Blob | File | null>(null);
   const [preview, setPreview] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -51,11 +56,41 @@ export default function CreateRoomPage() {
     ensureUserDoc();
   }, [user]);
 
-  function handleSelectFile(e: any) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setImageFile(file);
-    setPreview(URL.createObjectURL(file));
+  /* ------------------------------------------------------ */
+  /* FOTOĞRAF SEÇ (WEB + APK hibrit)                       */
+  /* ------------------------------------------------------ */
+  async function handleSelectFile(e?: any) {
+    try {
+      // 📌 APK → Native Galeri aç
+      if (isNative) {
+        const { Camera, CameraSource, CameraResultType } = await import("@capacitor/camera");
+
+        const photo = await Camera.getPhoto({
+          quality: 85,
+          resultType: CameraResultType.Base64,
+          source: CameraSource.Photos,
+        });
+
+        if (!photo.base64String) return;
+
+        const base64Data = `data:image/jpeg;base64,${photo.base64String}`;
+        const blob = await fetch(base64Data).then((r) => r.blob());
+
+        setImageFile(blob);
+        setPreview(base64Data);
+        return;
+      }
+
+      // 📌 WEB → normal file input
+      const file = e?.target?.files?.[0];
+      if (!file) return;
+
+      setImageFile(file);
+      setPreview(URL.createObjectURL(file));
+
+    } catch (err) {
+      console.warn("Fotoğraf seçilemedi:", err);
+    }
   }
 
   // ==========================================================
@@ -68,7 +103,6 @@ export default function CreateRoomPage() {
       const snap = await tx.get(counterRef);
 
       if (!snap.exists()) {
-        // İlk kez çalışıyor → 100'den başla
         tx.set(counterRef, { last: 100 });
         return 100;
       }
@@ -113,6 +147,7 @@ export default function CreateRoomPage() {
           storage,
           `roomImages/${user!.uid}/${Date.now()}.jpg`
         );
+
         await uploadBytes(storageRef, imageFile);
         imageUrl = await getDownloadURL(storageRef);
       }
@@ -133,7 +168,7 @@ export default function CreateRoomPage() {
         image: imageUrl,
         ownerId: user!.uid,
 
-        roomNumber, // ⭐ ARTIK VAR — 100, 101, 102…
+        roomNumber, // ⭐ 100, 101, 102…
 
         onlineUsers: [user!.uid],
         onlineCount: 1,
@@ -173,7 +208,7 @@ export default function CreateRoomPage() {
   }
 
   return (
-    <div className="max-w-lg mx-auto py-10">
+    <div className="max-w-lg mx-auto py-10 text-white">
       <h1 className="text-3xl font-bold mb-8">Oda Oluştur</h1>
 
       <form onSubmit={handleCreateRoom} className="flex flex-col gap-6">
@@ -188,7 +223,20 @@ export default function CreateRoomPage() {
 
         <div>
           <label className="block mb-2 text-white/80">Oda Resmi</label>
-          <input type="file" accept="image/*" onChange={handleSelectFile} />
+
+          {/* 📌 WEB ve APK AYRI INPUT */}
+          {isNative ? (
+            <button
+              type="button"
+              onClick={handleSelectFile}
+              className="bg-white/10 border border-white/20 px-3 py-2 rounded-lg"
+            >
+              Fotoğraf Seç
+            </button>
+          ) : (
+            <input type="file" accept="image/*" onChange={handleSelectFile} />
+          )}
+
           {preview && (
             <img
               src={preview}

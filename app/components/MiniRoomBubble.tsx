@@ -128,7 +128,7 @@ export default function MiniRoomBubble() {
       <button
         onClick={handleCloseBubble}
         className="
-          absolute -top-5 -right-5
+          absolute -top-1 -right-1
           w-5 h-5 rounded-full 
           bg-red-600 text-white text-xl 
           flex items-center justify-center

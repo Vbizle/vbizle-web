@@ -27,6 +27,14 @@ import {
 import { auth, db } from "@/firebase/firebaseConfig";
 import { onAuthStateChanged } from "firebase/auth";
 
+/* ------------------------------------------------------ */
+/* 🔥 WEB ↔ APK AYIRICI                                   */
+/* ------------------------------------------------------ */
+const isNative =
+  typeof window !== "undefined" &&
+  typeof (window as any).Capacitor !== "undefined" &&
+  (window as any).Capacitor.isNativePlatform === true;
+
 export default function DirectMessagePage() {
   const router = useRouter();
   const { uid } = useParams();
@@ -40,30 +48,28 @@ export default function DirectMessagePage() {
   const [convId, setConvId] = useState("");
 
   const bottomRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const emojiButtonRef = useRef<HTMLButtonElement>(null);
 
   const [imageModal, setImageModal] = useState<string | null>(null);
-  const [showAvatar] = useState(false);
 
   const [typing, setTyping] = useState(false);
   const [otherTyping, setOtherTyping] = useState(false);
-  let typingTimeout: any = null;
+  let typingTimeout: any;
 
   const storage = getStorage();
 
   /* ------------------------------------------------------ */
-  /* 1) ME                                                   */
+  /* 1) KENDİ PROFİLİMİ YÜKLE                               */
   /* ------------------------------------------------------ */
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
       if (!u) return router.push("/login");
 
       const snap = await getDoc(doc(db, "users", u.uid));
+
       setMe({
         uid: u.uid,
         name: snap.data()?.username,
-        avatar: snap.data()?.avatar,
+        avatar: snap.data()?.avatar || "/user.png",
       });
     });
 
@@ -71,11 +77,10 @@ export default function DirectMessagePage() {
   }, []);
 
   /* ------------------------------------------------------ */
-  /* 2) OTHER USER                                          */
+  /* 2) KARŞI KULLANICIYI YÜKLE                             */
   /* ------------------------------------------------------ */
   useEffect(() => {
     if (!uid) return;
-
     async function load() {
       const snap = await getDoc(doc(db, "users", uid as string));
       if (snap.exists()) {
@@ -83,22 +88,19 @@ export default function DirectMessagePage() {
         setOtherUser({
           uid,
           name: d.username,
-          avatar: d.avatar,
+          avatar: d.avatar || "/user.png",
           online: d.online ?? false,
-          lastSeen: d.lastSeen ?? null,
         });
       }
     }
-
     load();
   }, [uid]);
 
   /* ------------------------------------------------------ */
-  /* 3) CONVERSATION ID                                     */
+  /* 3) SOHBET ID OLUŞTUR                                   */
   /* ------------------------------------------------------ */
   useEffect(() => {
     if (!me || !uid) return;
-
     const a = me.uid;
     const b = uid as string;
     const id = a < b ? `${a}_${b}` : `${b}_${a}`;
@@ -111,12 +113,12 @@ export default function DirectMessagePage() {
   useEffect(() => {
     if (!convId || !me) return;
 
-    const metaRef = doc(db, "dm", convId, "meta", "info");
-    setDoc(metaRef, { unread: { [me.uid]: 0 } }, { merge: true });
+    const refMeta = doc(db, "dm", convId, "meta", "info");
+    setDoc(refMeta, { unread: { [me.uid]: 0 } }, { merge: true });
   }, [convId, me]);
 
   /* ------------------------------------------------------ */
-  /* 5) LIVE MESSAGES                                       */
+  /* 5) MESAJLARI CANLI DİNLE                               */
   /* ------------------------------------------------------ */
   useEffect(() => {
     if (!convId) return;
@@ -136,13 +138,13 @@ export default function DirectMessagePage() {
   }, [convId]);
 
   /* ------------------------------------------------------ */
-  /* 6) TYPING LISTENER                                     */
+  /* 6) TYPING DİNLE                                         */
   /* ------------------------------------------------------ */
   useEffect(() => {
     if (!convId) return;
 
-    const metaRef = doc(db, "dm", convId, "meta", "info");
-    const unsub = onSnapshot(metaRef, (snap) => {
+    const refMeta = doc(db, "dm", convId, "meta", "info");
+    const unsub = onSnapshot(refMeta, (snap) => {
       const d = snap.data();
       if (!d?.typing) return;
       setOtherTyping(!!d.typing[uid as string]);
@@ -152,54 +154,81 @@ export default function DirectMessagePage() {
   }, [convId, uid]);
 
   /* ------------------------------------------------------ */
-  /* 7) TYPING EMIT                                         */
+  /* 7) YAZIYOR DURUMU                                       */
   /* ------------------------------------------------------ */
   function handleTyping() {
     if (!convId || !me) return;
 
     if (!typing) {
       setTyping(true);
-      const refX = doc(db, "dm", convId, "meta", "info");
-      setDoc(refX, { typing: { [me.uid]: true } }, { merge: true });
+      setDoc(doc(db, "dm", convId, "meta", "info"), {
+        typing: { [me.uid]: true },
+      }, { merge: true });
     }
 
     clearTimeout(typingTimeout);
-    typingTimeout = setTimeout(stopTyping, 700);
-  }
-
-  function stopTyping() {
-    setTyping(false);
-    const refX = doc(db, "dm", convId, "meta", "info");
-    setDoc(refX, { typing: { [me.uid]: false } }, { merge: true });
-  }
-
-  /* ------------------------------------------------------ */
-  /* 8) SEND IMAGE                                          */
-  /* ------------------------------------------------------ */
-  async function sendImage(e: any) {
-    const file = e.target.files[0];
-    if (!file || !convId || !me) return;
-
-    const storageRef = ref(storage, `dm/${convId}/${Date.now()}_${file.name}`);
-    await uploadBytes(storageRef, file);
-    const url = await getDownloadURL(storageRef);
-
-    await addDoc(collection(db, "dm", convId, "messages"), {
-      uid: me.uid,
-      imgUrl: url,
-      time: serverTimestamp(),
-    });
-
-    await updateDoc(doc(db, "dm", convId, "meta", "info"), {
-      lastMsg: "[Fotoğraf]",
-      lastSender: me.uid,
-      time: serverTimestamp(),
-      unread: { [uid]: 1, [me.uid]: 0 },
-    });
+    typingTimeout = setTimeout(() => {
+      setTyping(false);
+      setDoc(doc(db, "dm", convId, "meta", "info"), {
+        typing: { [me.uid]: false },
+      }, { merge: true });
+    }, 700);
   }
 
   /* ------------------------------------------------------ */
-  /* 9) SEND TEXT                                           */
+  /* 8) FOTO GÖNDER — HİBRİT (SSR SAFE)                     */
+  /* ------------------------------------------------------ */
+  async function sendImage(e?: any) {
+    if (!convId || !me) return;
+
+    try {
+      let blob: Blob | File | null = null;
+
+      if (isNative) {
+        // ⚡ SSR-SAFE CAMERA IMPORT
+        const moduleName = "@capacitor/camera";
+        const CameraModule = await import(moduleName);
+        const { Camera, CameraSource, CameraResultType } = CameraModule;
+
+        const photo = await Camera.getPhoto({
+          quality: 85,
+          resultType: CameraResultType.Base64,
+          source: CameraSource.Photos,
+        });
+
+        const base64 = `data:image/jpeg;base64,${photo.base64String}`;
+        blob = await fetch(base64).then((r) => r.blob());
+
+      } else {
+        const file = e?.target?.files?.[0];
+        if (!file) return;
+        blob = file;
+      }
+
+      const storageRef = ref(storage, `dm/${convId}/${Date.now()}.jpg`);
+      await uploadBytes(storageRef, blob!);
+      const url = await getDownloadURL(storageRef);
+
+      await addDoc(collection(db, "dm", convId, "messages"), {
+        uid: me.uid,
+        imgUrl: url,
+        time: serverTimestamp(),
+      });
+
+      await updateDoc(doc(db, "dm", convId, "meta", "info"), {
+        lastMsg: "[Fotoğraf]",
+        lastSender: me.uid,
+        time: serverTimestamp(),
+        unread: { [uid]: 1, [me.uid]: 0 },
+      });
+
+    } catch (err) {
+      console.error("DM Image Error:", err);
+    }
+  }
+
+  /* ------------------------------------------------------ */
+  /* 9) METİN GÖNDER                                         */
   /* ------------------------------------------------------ */
   async function sendMessage() {
     if (!newMsg.trim()) return;
@@ -225,19 +254,19 @@ export default function DirectMessagePage() {
   }
 
   /* ------------------------------------------------------ */
-  /* 10) DELETE MESSAGE                                     */
+  /* 10) MESAJ SİL                                           */
   /* ------------------------------------------------------ */
   async function deleteMessage(id: string) {
     await deleteDoc(doc(db, "dm", convId, "messages", id));
   }
 
   /* ------------------------------------------------------ */
-  /* RENDER UI                                              */
+  /* UI                                                     */
   /* ------------------------------------------------------ */
 
   if (!me || !otherUser) {
     return (
-      <div className="min-h-screen flex items-center justify-center text-lg text-white">
+      <div className="min-h-screen flex items-center justify-center text-white">
         Yükleniyor...
       </div>
     );
@@ -246,31 +275,22 @@ export default function DirectMessagePage() {
   return (
     <div className="h-screen flex flex-col bg-black text-white overflow-hidden">
 
-      {/* HEADER (SABİT) */}
+      {/* HEADER */}
       <header className="w-full p-4 flex items-center gap-3 border-b border-white/10 bg-neutral-900 sticky top-0 z-50">
         <button onClick={() => router.back()} className="text-xl">←</button>
 
         <img
           src={otherUser.avatar}
-          className="w-10 h-10 rounded-full cursor-pointer"
-          onClick={() => setShowAvatar(true)}
+          className="w-10 h-10 rounded-full"
         />
 
         <div>
           <div className="text-lg font-semibold">{otherUser.name}</div>
-
-          <div className="text-sm text-white/70 flex items-center gap-2">
-            <span className={otherUser.online ? "text-green-400" : "text-gray-400"}>●</span>
-            {otherUser.online ? "Online" : "Çevrimdışı"}
-          </div>
-
-          {otherTyping && (
-            <div className="text-xs text-blue-400 mt-1">Yazıyor...</div>
-          )}
+          {otherTyping && <div className="text-xs text-blue-400">Yazıyor...</div>}
         </div>
       </header>
 
-      {/* IMAGE FULLSCREEN */}
+      {/* IMAGE MODAL */}
       {imageModal && (
         <div
           className="fixed inset-0 bg-black/90 flex items-center justify-center z-[99999]"
@@ -280,8 +300,8 @@ export default function DirectMessagePage() {
         </div>
       )}
 
-      {/* MESSAGES SCROLL AREA */}
-      <div className="flex-1 p-4 overflow-y-auto no-scrollbar pb-[80px]">
+      {/* MESSAGES */}
+      <div className="flex-1 p-4 overflow-y-auto pb-28 no-scrollbar">
         {messages.map((m) => {
           const mine = m.uid === me.uid;
 
@@ -290,7 +310,7 @@ export default function DirectMessagePage() {
               key={m.id}
               onContextMenu={(e) => {
                 e.preventDefault();
-                if (mine && confirm("Mesajı sil?")) deleteMessage(m.id);
+                if (mine && confirm("Mesaj silinsin mi?")) deleteMessage(m.id);
               }}
               className={`mb-3 flex ${mine ? "justify-end" : "justify-start"}`}
             >
@@ -298,7 +318,7 @@ export default function DirectMessagePage() {
                 <img
                   src={m.imgUrl}
                   onClick={() => setImageModal(m.imgUrl)}
-                  className={`w-40 h-40 object-cover rounded-xl cursor-pointer border ${
+                  className={`w-40 h-40 rounded-xl object-cover cursor-pointer border ${
                     mine ? "border-blue-500" : "border-white/20"
                   }`}
                 />
@@ -320,27 +340,26 @@ export default function DirectMessagePage() {
         <div ref={bottomRef}></div>
       </div>
 
-      {/* SEND BAR (SABİT + KLAVYE DOSTU) */}
-      <div className="bg-neutral-900 border-t border-white/10 px-3 py-3 flex items-center gap-2 sticky bottom-0 z-50 pb-[env(safe-area-inset-bottom)]">
+      {/* SEND BAR */}
+      <div className="bg-neutral-900 border-t border-white/10 px-3 py-3 flex items-center gap-2 fixed bottom-0 left-0 right-0 z-50">
 
-        {/* FOTO */}
-        <label className="w-11 h-11 bg-white/10 border border-white/20 rounded-xl flex items-center justify-center cursor-pointer text-xl">
-          🖼️
-          <input type="file" accept="image/*" className="hidden" onChange={sendImage} />
-        </label>
-
-        {/* EMOJI */}
-        <button
-          ref={emojiButtonRef}
-          onClick={() => inputRef.current?.focus()}
-          className="w-11 h-11 bg-white/10 border border-white/20 rounded-xl flex items-center justify-center text-xl"
-        >
-          😊
-        </button>
+        {/* FOTO BUTONU */}
+        {isNative ? (
+          <button
+            onClick={() => sendImage()}
+            className="w-11 h-11 bg-white/10 border border-white/20 rounded-xl flex items-center justify-center text-xl"
+          >
+            🖼️
+          </button>
+        ) : (
+          <label className="w-11 h-11 bg-white/10 border border-white/20 rounded-xl flex items-center justify-center text-xl cursor-pointer">
+            🖼️
+            <input type="file" accept="image/*" className="hidden" onChange={sendImage} />
+          </label>
+        )}
 
         {/* INPUT */}
         <input
-          ref={inputRef}
           value={newMsg}
           onKeyDown={handleKey}
           onChange={(e) => {
@@ -354,7 +373,7 @@ export default function DirectMessagePage() {
         {/* SEND */}
         <button
           onClick={sendMessage}
-          className="px-5 h-11 bg-blue-600 rounded-xl flex items-center justify-center text-sm font-semibold shadow-md active:scale-95 transition"
+          className="px-5 h-11 bg-blue-600 rounded-xl font-semibold active:scale-95 transition"
         >
           Gönder
         </button>
